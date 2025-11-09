@@ -386,7 +386,7 @@ def _set_current(img: Image.Image):
     # Push to hardware if available
     if matrix is not None:
         try:
-            matrix.SetImage(im, 0, 0, unsafe=False)
+            matrix.SetImage(im, 0, 0)
         except Exception:
             pass
 
