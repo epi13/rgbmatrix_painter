@@ -6,7 +6,7 @@ The existing web editor works on a computer on the local network. A standalone R
 
 The sign keeps the farm name on a static fall-harvest scene with a harvest moon, small pumpkins, and one slowly flapping bat. It uses the matrix dimensions and GPIO settings in `config.py`. The background and bat frames are rendered once at startup; later updates touch only pixels changed by the bat. It updates at most once every two seconds.
 
-For the 2×2 64×64 panel setup, `config.py` uses a four-bit PWM depth, no temporal dithering, a 120Hz refresh cap, and sleep-based refresh waiting. This trades fine color gradation and slightly less precise refresh timing for lower CPU use on the Pi Zero 2 W. The sign pre-renders its frames and moves only a small bat once every two seconds.
+For the 2×2 64×64 panel setup, `config.py` uses a four-bit PWM depth, no temporal dithering, and a 120Hz refresh cap. The refresh thread uses precise busy waiting on isolated CPU 3 to avoid timing jitter; device interrupts are routed to CPUs 0–2 so Wi-Fi and normal system work can use the other cores. This reserves one of the Pi Zero 2 W's four cores for the panel refresh. The sign pre-renders its frames and moves only a small bat once every two seconds.
 
 The upstream C++ driver supports sleep-based refresh waiting, but its Python binding does not expose that option. Rebuild a private binding for the sign with the included patch, then configure the Pi for headless operation before enabling the service:
 
@@ -16,7 +16,7 @@ sudo ./deploy/configure_headless_pi.sh
 sudo ./deploy/install_service.sh
 ```
 
-The binding installer builds against the Pi's existing driver checkout and places the patched Python modules inside `/opt/rgbmatrix_painter`, leaving the system-wide binding alone. The headless script stops the desktop and unrelated Bluetooth, printer, modem, and removable-disk services while checking that Wi-Fi, SSH, and mDNS remain active. The service has a restart limit so a driver fault cannot create a rapid restart loop.
+The binding installer builds against the Pi's existing driver checkout and places the patched Python modules inside `/opt/rgbmatrix_painter`, leaving the system-wide binding alone. The headless script stops the desktop and unrelated Bluetooth, printer, modem, and removable-disk services while checking that Wi-Fi, SSH, and mDNS remain active. It also isolates CPU 3 and routes device interrupts to CPUs 0–2 in the kernel command line; a reboot is needed for those settings to take effect. The service has a restart limit so a driver fault cannot create a rapid restart loop.
 
 The sign expects the `rgbmatrix` Python binding from [`rpi-rgb-led-matrix`](https://github.com/hzeller/rpi-rgb-led-matrix) and Pillow to be installed for the Pi's system Python. On Raspberry Pi OS, install Pillow with `sudo apt install python3-pil`, and install the matrix library's Python binding using its upstream installation instructions for your Pi and panel.
 

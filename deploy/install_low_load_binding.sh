@@ -49,7 +49,7 @@ install -m 0644 \
 install -m 0755 "$BUILD_DIR/compiled/rgbmatrix/"*.so "$PACKAGE_DIR/"
 
 PYTHONPATH="$BUILD_DIR/package" /usr/bin/python3 -c \
-    'from rgbmatrix import RGBMatrixOptions; options = RGBMatrixOptions(); options.disable_busy_waiting = True; assert options.disable_busy_waiting'
+    'from rgbmatrix import RGBMatrixOptions; options = RGBMatrixOptions(); options.disable_busy_waiting = False; assert not options.disable_busy_waiting'
 
 install -d -m 0755 "$APP_DIR"
 if [ -d "$APP_DIR/rgbmatrix" ]; then
