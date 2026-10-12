@@ -4,9 +4,9 @@ The existing web editor works on a computer on the local network. A standalone R
 
 ## Animated farm sign
 
-The sign keeps the farm name on a static fall-harvest scene with a harvest moon, small pumpkins, and one slowly flapping bat. It uses the matrix dimensions and GPIO settings in `config.py`. The background and bat frames are rendered once at startup; later updates touch only pixels changed by the bat. It updates at most once every two seconds.
+The sign keeps the farm name on a fall-harvest scene with a harvest moon, small pumpkins, a smoothly flying bat, drifting fireflies, and gently swaying crops. It uses the matrix dimensions and GPIO settings in `config.py`. All animation frames are rendered once at startup; each update writes only pixels that changed. The scene updates at four frames per second while the matrix refresh continues independently.
 
-For the 2×2 64×64 panel setup, `config.py` uses a four-bit PWM depth, no temporal dithering, a 120Hz refresh cap, and GPIO slowdown 3 to give the Pi Zero 2 W more signal timing margin. The refresh thread uses precise busy waiting on isolated CPU 3 to avoid timing jitter; device interrupts are routed to CPUs 0–2 so Wi-Fi and normal system work can use the other cores. This reserves one of the Pi Zero 2 W's four cores for the panel refresh. The sign pre-renders its frames and moves only a small bat once every two seconds.
+For the 2×2 64×64 panel setup, `config.py` uses a four-bit PWM depth, no temporal dithering, a 120Hz refresh cap, and GPIO slowdown 3 to give the Pi Zero 2 W more signal timing margin. The refresh thread uses precise busy waiting on isolated CPU 3 to avoid timing jitter; device interrupts are routed to CPUs 0–2 so Wi-Fi and normal system work can use the other cores. This reserves one of the Pi Zero 2 W's four cores for panel refresh. The scene updates at four frames per second using pre-rendered frames and small pixel changes.
 
 The upstream C++ driver supports sleep-based refresh waiting, but its Python binding does not expose that option. Rebuild a private binding for the sign with the included patch, then configure the Pi for headless operation before enabling the service:
 

@@ -27,6 +27,7 @@ BAT_WINGS = (
     ("#..##..#", "##.##.##", ".######.", "..####..", "...##..."),
     ("...##...", "..####..", ".######.", "##.##.##", "#..##..#"),
 )
+CROP_SWAY = (-2, -1, 0, 1, 2, 1, 0, -1)
 
 
 def _font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
@@ -83,6 +84,34 @@ def _draw_bat(image: Image.Image, x: int, y: int, wing_frame: int, scale: float)
                 draw.rectangle((left, top, left + step - 1, top + step - 1), fill=color)
 
 
+def _draw_fireflies(draw: ImageDraw.ImageDraw, frame_index: int) -> None:
+    """Add a few dim, drifting fireflies in the open dusk sky."""
+    glow = (112, 100, 68)
+    light = (250, 213, 137)
+    for fly_index, (base_x, base_y) in enumerate(((22, 14), (69, 9), (88, 20))):
+        phase = frame_index + fly_index * 7
+        x = base_x + ((phase // 4) % 7) - 3
+        y = base_y + ((phase // 6 + fly_index) % 3) - 1
+        if (phase // 3) % 4 == 0:
+            continue
+        draw.point((x - 1, y), fill=glow)
+        draw.point((x + 1, y), fill=glow)
+        draw.point((x, y), fill=light)
+
+
+def _draw_swaying_crops(
+    draw: ImageDraw.ImageDraw, width: int, height: int, scale: float, frame_index: int
+) -> None:
+    px = lambda value: max(1, round(value * scale))
+    for crop_index, crop_x in enumerate(range(px(8), width, px(18))):
+        sway = round(CROP_SWAY[(frame_index // 2 + crop_index * 2) % len(CROP_SWAY)] * scale)
+        x = crop_x + sway
+        crop_y = px(119 + (crop_x % px(7)))
+        draw.line((x, height - 1, x, crop_y), fill=(112, 145, 69), width=px(1))
+        draw.line((x, px(124), x - px(3), px(121)), fill=(137, 163, 77), width=px(1))
+        draw.line((x, px(126), x + px(3), px(123)), fill=(137, 163, 77), width=px(1))
+
+
 def _draw_static_sign(width: int, height: int) -> tuple[Image.Image, float]:
     image = Image.new("RGB", (width, height), (16, 31, 42))
     draw = ImageDraw.Draw(image)
@@ -123,22 +152,18 @@ def _draw_static_sign(width: int, height: int) -> tuple[Image.Image, float]:
     _centered_text(draw, "FARMS", farm_font, width, px(65), (247, 171, 82))
     _centered_text(draw, "LOCALLY GROWN", tagline_font, width, px(96), (225, 232, 193))
 
-    # Quiet crop rows and sign supports finish the scene.
+    # Quiet sign supports finish the scene; crop rows sway per animation frame.
     for post_x in (px(25), width - px(25)):
         draw.rectangle((post_x - px(2), bottom - px(1), post_x + px(2), height), fill=(91, 62, 40))
-    for crop_x in range(px(8), width, px(18)):
-        crop_y = px(119 + (crop_x % px(7)))
-        draw.line((crop_x, height, crop_x, crop_y), fill=(112, 145, 69), width=px(1))
-        draw.line((crop_x, px(124), crop_x - px(3), px(121)), fill=(137, 163, 77), width=px(1))
 
     return image, scale
 
 
 def build_animation_frames(width: int, height: int) -> tuple[bytes, ...]:
-    """Pre-render the static sign and small bat positions once at startup."""
+    """Pre-render the sign and its small animated details once at startup."""
     background, scale = _draw_static_sign(width, height)
     bat_width = len(BAT_WINGS[0][0]) * max(1, round(scale))
-    step = max(1, round(8 * scale))
+    step = max(1, round(4 * scale))
     first_x = max(0, round(8 * scale))
     last_x = max(first_x, width - bat_width - round(8 * scale))
     positions = list(range(first_x, last_x + 1, step)) or [first_x]
@@ -149,6 +174,9 @@ def build_animation_frames(width: int, height: int) -> tuple[bytes, ...]:
     for index, x in enumerate(positions):
         frame = background.copy()
         _draw_bat(frame, x, round(10 * scale), index % 2, scale)
+        draw = ImageDraw.Draw(frame)
+        _draw_fireflies(draw, index)
+        _draw_swaying_crops(draw, width, height, scale, index)
         frames.append(frame.tobytes())
     return tuple(frames)
 
