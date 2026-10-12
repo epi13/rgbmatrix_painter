@@ -4,7 +4,19 @@ The existing web editor works on a computer on the local network. A standalone R
 
 ## Animated farm sign
 
-The sign draws a warm roadside farm sign with slowly drifting clouds, a pulsing sun, and swaying crop rows. It uses the matrix dimensions and GPIO settings in `config.py` and updates at 12 frames per second.
+The sign keeps the farm name on a static fall-harvest scene with a harvest moon, small pumpkins, and one slowly flapping bat. It uses the matrix dimensions and GPIO settings in `config.py`. The background and bat frames are rendered once at startup; later updates touch only pixels changed by the bat. It updates at most once every two seconds.
+
+For the 2×2 64×64 panel setup, `config.py` uses a four-bit PWM depth, no temporal dithering, a 120Hz refresh cap, and sleep-based refresh waiting. This trades fine color gradation and slightly less precise refresh timing for lower CPU use on the Pi Zero 2 W. The sign pre-renders its frames and moves only a small bat once every two seconds.
+
+The upstream C++ driver supports sleep-based refresh waiting, but its Python binding does not expose that option. Rebuild a private binding for the sign with the included patch, then configure the Pi for headless operation before enabling the service:
+
+```bash
+sudo ./deploy/install_low_load_binding.sh /home/epi13/rpi-rgb-led-matrix
+sudo ./deploy/configure_headless_pi.sh
+sudo ./deploy/install_service.sh
+```
+
+The binding installer builds against the Pi's existing driver checkout and places the patched Python modules inside `/opt/rgbmatrix_painter`, leaving the system-wide binding alone. The headless script stops the desktop and unrelated Bluetooth, printer, modem, and removable-disk services while checking that Wi-Fi, SSH, and mDNS remain active. The service has a restart limit so a driver fault cannot create a rapid restart loop.
 
 The sign expects the `rgbmatrix` Python binding from [`rpi-rgb-led-matrix`](https://github.com/hzeller/rpi-rgb-led-matrix) and Pillow to be installed for the Pi's system Python. On Raspberry Pi OS, install Pillow with `sudo apt install python3-pil`, and install the matrix library's Python binding using its upstream installation instructions for your Pi and panel.
 

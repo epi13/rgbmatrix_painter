@@ -1,7 +1,6 @@
-"""Animated Poor Louis Farms sign for a HUB75 RGB matrix."""
+"""Low-load Poor Louis Farms fall sign for a HUB75 RGB matrix."""
 from __future__ import annotations
 
-import math
 import signal
 import time
 from pathlib import Path
@@ -9,18 +8,32 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 from config import (
+    ANIMATION_FPS,
     CHAIN_LENGTH,
+    DISABLE_BUSY_WAITING,
     GPIO_SLOWDOWN,
+    MATRIX_REFRESH_LIMIT_HZ,
     MATRIX_HEIGHT,
     MATRIX_WIDTH,
     PANEL_BRIGHTNESS,
     PARALLEL,
+    PIXEL_MAPPER_CONFIG,
+    PWM_BITS,
+    PWM_DITHER_BITS,
+)
+
+
+BAT_WINGS = (
+    ("#..##..#", "##.##.##", ".######.", "..####..", "...##..."),
+    ("...##...", "..####..", ".######.", "##.##.##", "#..##..#"),
 )
 
 
 def _font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     candidates = (
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        "/usr/share/fonts/liberation/LiberationSans-Bold.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     )
     for candidate in candidates:
@@ -29,80 +42,140 @@ def _font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     return ImageFont.load_default()
 
 
-def build_frame(t: float, width: int = MATRIX_WIDTH, height: int = MATRIX_HEIGHT) -> Image.Image:
-    """Draw one RGB frame; t is elapsed animation time in seconds."""
-    im = Image.new("RGB", (width, height), (21, 83, 116))
-    d = ImageDraw.Draw(im)
-    scale = min(width / 64, height / 64)
+def _centered_text(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    font: ImageFont.ImageFont,
+    width: int,
+    y: int,
+    color: tuple[int, int, int],
+) -> None:
+    box = draw.textbbox((0, 0), text, font=font)
+    text_width = box[2] - box[0]
+    draw.text(((width - text_width) // 2 - box[0], y - box[1]), text, font=font, fill=color)
+
+
+def _draw_pumpkin(draw: ImageDraw.ImageDraw, x: int, y: int, scale: float) -> None:
     px = lambda value: round(value * scale)
-
-    # A warm, slow-breathing sun and drifting cloud give the sign a little life.
-    pulse = (math.sin(t * 1.2) + 1) / 2
-    sun_r = px(4 + pulse)
-    sun_x = px(52 + math.sin(t * .22) * 2)
-    sun_y = px(11)
-    d.ellipse((sun_x - sun_r, sun_y - sun_r, sun_x + sun_r, sun_y + sun_r), fill=(255, 205, 82))
-    cloud_x = int((t * px(3)) % (width + px(20))) - px(14)
-    cloud_y = px(9)
-    for dx, dy, radius in ((0, 2, 3), (4, 0, 4), (9, 2, 3)):
-        r = px(radius)
-        x, y = cloud_x + px(dx), cloud_y + px(dy)
-        d.ellipse((x-r, y-r, x+r, y+r), fill=(184, 221, 223))
-
-    # Farm field and two gently swaying crop rows.
-    horizon = px(49)
-    d.rectangle((0, horizon, width, height), fill=(53, 111, 59))
-    sway = math.sin(t * 2.0) * px(1)
-    for x0 in range(px(4), width, px(10)):
-        x = x0 + round(sway * math.sin(x0 * .2))
-        d.line((x, height, x, height - px(7)), fill=(119, 172, 73), width=max(1, px(1)))
-        d.ellipse((x - px(2), height - px(7), x, height - px(4)), fill=(142, 190, 83))
-        d.ellipse((x, height - px(9), x + px(2), height - px(6)), fill=(142, 190, 83))
-
-    # Painted wooden roadside sign, sized for the configured panel.
-    left, right = px(2), width - px(2)
-    top, bottom = px(16), px(48)
-    d.rounded_rectangle((left, top, right, bottom), radius=px(3), fill=(53, 38, 27), outline=(239, 187, 103), width=max(1, px(1)))
-    d.rounded_rectangle((left + px(2), top + px(2), right - px(2), bottom - px(2)), radius=px(2), fill=(37, 77, 47))
-
-    title_font = _font(px(7))
-    farm_font = _font(px(8))
-    tagline_font = _font(px(4))
-    title = "POOR LOUIS"
-    farm = "FARMS"
-    title_box = d.textbbox((0, 0), title, font=title_font)
-    farm_box = d.textbbox((0, 0), farm, font=farm_font)
-    tagline = "LOCAL"
-    tag_box = d.textbbox((0, 0), tagline, font=tagline_font)
-    def center(text: str, font: ImageFont.ImageFont, box: tuple[int, int, int, int], y: int, color: tuple[int, int, int]) -> None:
-        tw = box[2] - box[0]
-        d.text(((width - tw) // 2, y), text, font=font, fill=color)
-
-    center(title, title_font, title_box, top + px(2), (255, 245, 213))
-    center(farm, farm_font, farm_box, top + px(11), (242, 181, 91))
-    center(tagline, tagline_font, tag_box, top + px(23), (222, 240, 187))
-    return im
+    orange = (228, 111, 37)
+    light = (255, 164, 66)
+    dark = (133, 61, 32)
+    green = (108, 143, 67)
+    draw.ellipse((x, y + px(3), x + px(14), y + px(14)), fill=orange, outline=dark)
+    draw.ellipse((x + px(4), y + px(2), x + px(10), y + px(13)), fill=light)
+    draw.line((x + px(3), y + px(5), x + px(4), y + px(11)), fill=dark)
+    draw.line((x + px(11), y + px(5), x + px(10), y + px(11)), fill=dark)
+    draw.line((x + px(7), y + px(2), x + px(8), y), fill=green, width=max(1, px(2)))
+    # Tiny warm eyes add a Halloween cue without competing with the farm name.
+    draw.ellipse((x + px(4), y + px(7), x + px(5), y + px(8)), fill=(70, 40, 31))
+    draw.ellipse((x + px(9), y + px(7), x + px(10), y + px(8)), fill=(70, 40, 31))
 
 
-def draw_to_canvas(canvas: object, frame: Image.Image, previous: bytes | None) -> bytes:
-    """Copy RGB pixels through the driver's canvas API.
+def _draw_bat(image: Image.Image, x: int, y: int, wing_frame: int, scale: float) -> None:
+    draw = ImageDraw.Draw(image)
+    color = (166, 137, 176)
+    step = max(1, round(scale))
+    for row, pattern in enumerate(BAT_WINGS[wing_frame]):
+        for column, pixel in enumerate(pattern):
+            if pixel == "#":
+                left = x + column * step
+                top = y + row * step
+                draw.rectangle((left, top, left + step - 1, top + step - 1), fill=color)
 
-    This avoids Pillow's private image-pointer API, which varies between
-    Pillow versions and can crash older rgbmatrix Python bindings.
-    """
-    current = frame.tobytes()
-    previous_view = memoryview(previous) if previous is not None else None
-    for y in range(frame.height):
-        offset = y * frame.width * 3
-        for x in range(frame.width):
-            if previous_view is None or (
-                current[offset] != previous_view[offset]
-                or current[offset + 1] != previous_view[offset + 1]
-                or current[offset + 2] != previous_view[offset + 2]
+
+def _draw_static_sign(width: int, height: int) -> tuple[Image.Image, float]:
+    image = Image.new("RGB", (width, height), (16, 31, 42))
+    draw = ImageDraw.Draw(image)
+    scale = min(width / 128, height / 128)
+    px = lambda value: max(1, round(value * scale))
+
+    # Quiet dusk sky with a harvest moon and a few fixed stars.
+    draw.ellipse((px(94), px(3), px(116), px(25)), fill=(247, 193, 105))
+    draw.ellipse((px(101), px(0), px(120), px(19)), fill=(16, 31, 42))
+    for star_x, star_y in ((12, 9), (38, 17), (57, 7), (82, 20), (120, 10)):
+        x, y = px(star_x), px(star_y)
+        draw.point((x, y), fill=(220, 203, 155))
+
+    # Distant orchard hills sit behind the sign.
+    draw.polygon(
+        ((0, px(29)), (px(18), px(23)), (px(37), px(30)), (px(58), px(22)),
+         (px(78), px(29)), (px(99), px(21)), (width, px(28)), (width, px(39)),
+         (0, px(39))),
+        fill=(45, 73, 61),
+    )
+    draw.rectangle((0, px(108), width, height), fill=(28, 57, 42))
+    draw.polygon(((0, px(118)), (width, px(111)), (width, height), (0, height)), fill=(37, 72, 48))
+
+    # Timber frame and deep green sign keep the farm branding as the focus.
+    left, top, right, bottom = px(4), px(27), width - px(4), px(108)
+    draw.rounded_rectangle((left, top, right, bottom), radius=px(5), fill=(62, 39, 25), outline=(222, 157, 74), width=px(2))
+    draw.rounded_rectangle((left + px(3), top + px(3), right - px(3), bottom - px(3)), radius=px(3), fill=(30, 65, 47), outline=(100, 126, 70), width=px(1))
+
+    # Small carved pumpkins decorate the name without touching the center seam.
+    _draw_pumpkin(draw, px(10), px(69), scale)
+    _draw_pumpkin(draw, width - px(24), px(69), scale)
+
+    title_font = _font(px(16))
+    farm_font = _font(px(25))
+    tagline_font = _font(px(8))
+    _centered_text(draw, "POOR LOUIS", title_font, width, px(35), (255, 240, 205))
+    draw.line((px(27), px(57), width - px(27), px(57)), fill=(168, 113, 57), width=px(1))
+    _centered_text(draw, "FARMS", farm_font, width, px(65), (247, 171, 82))
+    _centered_text(draw, "LOCALLY GROWN", tagline_font, width, px(96), (225, 232, 193))
+
+    # Quiet crop rows and sign supports finish the scene.
+    for post_x in (px(25), width - px(25)):
+        draw.rectangle((post_x - px(2), bottom - px(1), post_x + px(2), height), fill=(91, 62, 40))
+    for crop_x in range(px(8), width, px(18)):
+        crop_y = px(119 + (crop_x % px(7)))
+        draw.line((crop_x, height, crop_x, crop_y), fill=(112, 145, 69), width=px(1))
+        draw.line((crop_x, px(124), crop_x - px(3), px(121)), fill=(137, 163, 77), width=px(1))
+
+    return image, scale
+
+
+def build_animation_frames(width: int, height: int) -> tuple[bytes, ...]:
+    """Pre-render the static sign and small bat positions once at startup."""
+    background, scale = _draw_static_sign(width, height)
+    bat_width = len(BAT_WINGS[0][0]) * max(1, round(scale))
+    step = max(1, round(8 * scale))
+    first_x = max(0, round(8 * scale))
+    last_x = max(first_x, width - bat_width - round(8 * scale))
+    positions = list(range(first_x, last_x + 1, step)) or [first_x]
+    if len(positions) > 1:
+        positions.extend(positions[-2:0:-1])
+
+    frames = []
+    for index, x in enumerate(positions):
+        frame = background.copy()
+        _draw_bat(frame, x, round(10 * scale), index % 2, scale)
+        frames.append(frame.tobytes())
+    return tuple(frames)
+
+
+def draw_to_canvas(canvas: object, current: bytes, previous: bytes, width: int, height: int) -> None:
+    """Write only changed RGB pixels, skipping the untouched static rows."""
+    previous_view = memoryview(previous)
+    row_bytes = width * 3
+    for y in range(height):
+        offset = y * row_bytes
+        if current[offset:offset + row_bytes] == previous_view[offset:offset + row_bytes]:
+            continue
+        pixel_offset = offset
+        for x in range(width):
+            if (
+                current[pixel_offset] != previous_view[pixel_offset]
+                or current[pixel_offset + 1] != previous_view[pixel_offset + 1]
+                or current[pixel_offset + 2] != previous_view[pixel_offset + 2]
             ):
-                canvas.SetPixel(x, y, current[offset], current[offset + 1], current[offset + 2])
-            offset += 3
-    return current
+                canvas.SetPixel(
+                    x,
+                    y,
+                    current[pixel_offset],
+                    current[pixel_offset + 1],
+                    current[pixel_offset + 2],
+                )
+            pixel_offset += 3
 
 
 def main() -> None:
@@ -113,31 +186,50 @@ def main() -> None:
     options.cols = MATRIX_WIDTH
     options.chain_length = CHAIN_LENGTH
     options.parallel = PARALLEL
+    options.pixel_mapper_config = PIXEL_MAPPER_CONFIG
     options.gpio_slowdown = GPIO_SLOWDOWN
     options.brightness = PANEL_BRIGHTNESS
+    options.pwm_bits = PWM_BITS
+    options.pwm_dither_bits = PWM_DITHER_BITS
+    options.limit_refresh_rate_hz = MATRIX_REFRESH_LIMIT_HZ
+    options.disable_busy_waiting = DISABLE_BUSY_WAITING
     matrix = RGBMatrix(options=options)
-    canvas = matrix.CreateFrameCanvas()
 
     running = True
+
     def stop(_signum: int, _frame: object) -> None:
         nonlocal running
         running = False
+
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
 
-    started = time.monotonic()
-    next_frame = started
-    blank_frame = bytes(MATRIX_WIDTH * MATRIX_HEIGHT * 3)
-    front_frame = blank_frame
-    back_frame = blank_frame
     try:
+        frames = build_animation_frames(matrix.width, matrix.height)
+        print(
+            f"RGB matrix canvas: {matrix.width}x{matrix.height} "
+            f"(chain={CHAIN_LENGTH}, mapper={PIXEL_MAPPER_CONFIG}, "
+            f"pwm_bits={PWM_BITS}, pwm_dither_bits={PWM_DITHER_BITS}, "
+            f"max_refresh_hz={MATRIX_REFRESH_LIMIT_HZ}, "
+            f"busy_waiting={not DISABLE_BUSY_WAITING}, "
+            f"animation_fps={ANIMATION_FPS}, "
+            f"pre_rendered_frames={len(frames)})",
+            flush=True,
+        )
+        canvas = matrix.CreateFrameCanvas()
+        blank = bytes(matrix.width * matrix.height * 3)
+        front_frame = blank
+        back_frame = blank
+        frame_index = 0
+        frame_interval = 1 / ANIMATION_FPS
+
         while running:
-            now = time.monotonic()
-            rendered_frame = draw_to_canvas(canvas, build_frame(now - started), back_frame)
+            current = frames[frame_index]
+            draw_to_canvas(canvas, current, back_frame, matrix.width, matrix.height)
             canvas = matrix.SwapOnVSync(canvas)
-            back_frame, front_frame = front_frame, rendered_frame
-            next_frame += 1 / 8
-            time.sleep(max(0, next_frame - time.monotonic()))
+            back_frame, front_frame = front_frame, current
+            frame_index = (frame_index + 1) % len(frames)
+            time.sleep(frame_interval)
     finally:
         matrix.Clear()
 

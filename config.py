@@ -4,12 +4,19 @@
 MATRIX_WIDTH = 64
 MATRIX_HEIGHT = 64
 
-# If chaining multiple panels horizontally, set chain length;
-# width remains the width of ONE panel (the library composes them).
-CHAIN_LENGTH = 1
+# Four 64x64 panels arranged in a 2x2 U-shaped chain.
+# Width/height remain the dimensions of ONE panel; the mapper folds the
+# four-panel chain into a 128x128 canvas.
+CHAIN_LENGTH = 4
 PARALLEL = 1
+PIXEL_MAPPER_CONFIG = "U-mapper"
 GPIO_SLOWDOWN = 2
 PANEL_BRIGHTNESS = 60  # 1..100 default
+PWM_BITS = 4
+PWM_DITHER_BITS = 0
+MATRIX_REFRESH_LIMIT_HZ = 120
+DISABLE_BUSY_WAITING = True
+ANIMATION_FPS = 0.5
 
 # App defaults
 DEFAULT_GAMMA = 2.2

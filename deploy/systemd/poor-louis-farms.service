@@ -1,14 +1,17 @@
 [Unit]
 Description=Poor Louis Farms animated RGB matrix sign
 After=local-fs.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
 
 [Service]
 Type=simple
 User=root
 WorkingDirectory=/opt/rgbmatrix_painter
 ExecStart=/usr/bin/python3 /opt/rgbmatrix_painter/poor_louis_farms.py
-Restart=always
-RestartSec=3
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
 Environment=PYTHONUNBUFFERED=1
 
 [Install]

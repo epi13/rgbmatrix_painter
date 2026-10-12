@@ -1,0 +1,17 @@
+--- a/bindings/python/rgbmatrix/cppinc.pxd
++++ b/bindings/python/rgbmatrix/cppinc.pxd
+@@ -62,4 +62,5 @@
+         int pwm_dither_bits
+         int limit_refresh_rate_hz
+-
++        bool disable_busy_waiting
++
+         bool disable_hardware_pulsing
+--- a/bindings/python/rgbmatrix/core.pyx
++++ b/bindings/python/rgbmatrix/core.pyx
+@@ -201,1 +201,5 @@
++    property disable_busy_waiting:
++        def __get__(self): return self.__options.disable_busy_waiting
++        def __set__(self, value): self.__options.disable_busy_waiting = value
++
+     # RuntimeOptions properties
