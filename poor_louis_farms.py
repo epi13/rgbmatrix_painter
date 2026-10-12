@@ -386,7 +386,8 @@ def _draw_black_cat(image: Image.Image, x: int, y: int, scale: float, frame_inde
     draw = ImageDraw.Draw(image)
     px = lambda value: round(value * scale)
     black = (5, 6, 13)
-    edge = (77, 64, 100)
+    # A bright lavender rim keeps the black silhouette readable on the night sky.
+    edge = (196, 158, 244)
     tail = px(CAT_TAIL_SWAY[(frame_index // 2) % len(CAT_TAIL_SWAY)])
     draw.line(
         ((x + px(8), y + px(17)), (x + px(4) + tail, y + px(15)),
@@ -400,8 +401,18 @@ def _draw_black_cat(image: Image.Image, x: int, y: int, scale: float, frame_inde
     )
     draw.ellipse((x + px(3), y + px(12), x + px(19), y + px(23)), fill=black, outline=edge)
     draw.ellipse((x + px(12), y + px(5), x + px(24), y + px(17)), fill=black, outline=edge)
-    draw.polygon(((x + px(13), y + px(10)), (x + px(12), y + px(2)), (x + px(18), y + px(7))), fill=black)
-    draw.polygon(((x + px(18), y + px(7)), (x + px(23), y + px(1)), (x + px(23), y + px(11))), fill=black)
+    draw.polygon(
+        ((x + px(13), y + px(10)), (x + px(12), y + px(2)), (x + px(18), y + px(7))),
+        fill=black, outline=edge,
+    )
+    draw.polygon(
+        ((x + px(18), y + px(7)), (x + px(23), y + px(1)), (x + px(23), y + px(11))),
+        fill=black, outline=edge,
+    )
+    # Tiny cool and warm rim pixels make the ears and shoulder read as a lit shape.
+    draw.line(((x + px(13), y + px(6)), (x + px(13), y + px(4))), fill=(133, 224, 236))
+    draw.line(((x + px(17), y + px(7)), (x + px(19), y + px(6))), fill=(255, 172, 99))
+    draw.line(((x + px(7), y + px(13)), (x + px(10), y + px(12))), fill=(133, 224, 236))
     if (frame_index // 2) % 13 not in (5, 6):
         eye = (255, 207, 111)
         draw.point((x + px(17), y + px(11)), fill=eye)
@@ -424,8 +435,12 @@ def _draw_static_sign(width: int, height: int) -> tuple[Image.Image, float]:
     draw.polygon(
         ((0, px(33)), (px(16), px(28)), (px(36), px(34)), (px(55), px(27)),
          (px(78), px(34)), (px(101), px(27)), (width, px(34)), (width, px(42)),
-         (0, px(42))), fill=(35, 48, 65),
+         (0, px(42))), fill=(43, 57, 78),
     )
+    # A restrained cool ridge light separates the farm skyline from the sky.
+    draw.line(((0, px(33)), (px(16), px(28)), (px(36), px(34)),
+               (px(55), px(27)), (px(78), px(34)), (px(101), px(27)),
+               (width, px(34))), fill=(75, 93, 126), width=px(1))
     draw.rectangle((0, px(96), width, height), fill=(16, 30, 37))
     draw.polygon(((0, px(112)), (px(42), px(107)), (px(88), px(112)),
                   (width, px(106)), (width, height), (0, height)), fill=(23, 45, 39))
@@ -458,12 +473,12 @@ def build_animation_frames(width: int, height: int) -> tuple[bytes, ...]:
         draw = ImageDraw.Draw(frame)
         _draw_pumpkin_vines(draw, width, height, scale, index)
         _draw_twinkling_stars(draw, scale, index)
+        _draw_black_cat(frame, round(4 * scale), round(7 * scale), scale, index)
         witch_phase = index / (frame_count - 1)
         witch_x = round((-34 + (width / max(scale, 0.01) + 68) * witch_phase) * scale)
         witch_y = round((8 + sin(index * 2 * pi / 26) * 1.5) * scale)
         _draw_witch_broom(frame, witch_x, witch_y, scale, index)
         _draw_halloween_border(draw, scale, index, frame_count)
-        _draw_black_cat(frame, round(4 * scale), round(7 * scale), scale, index)
         frames.append(frame.tobytes())
     return tuple(frames)
 
