@@ -70,11 +70,13 @@ def _draw_pixel_text(
     mask = small.point(lambda value: 255 if value >= 128 else 0)
     mask = mask.resize(image.size, Image.Resampling.NEAREST)
 
-    # Offset copies form a blocky extrusion; both title lines share the same face color and size.
-    image.paste((67, 35, 55), (6, 6), mask)
-    image.paste((139, 61, 48), (4, 4), mask)
-    image.paste((205, 116, 55), (2, 2), mask)
-    image.paste((255, 238, 183), (-1, -1), mask)
+    # Warm stepped bevels add depth without the muddy red cast of a long drop shadow.
+    image.paste((49, 39, 58), (5, 5), mask)
+    image.paste((92, 68, 65), (4, 4), mask)
+    image.paste((139, 91, 67), (3, 3), mask)
+    image.paste((190, 123, 59), (2, 2), mask)
+    image.paste((239, 164, 67), (1, 1), mask)
+    image.paste((255, 239, 188), (-1, -1), mask)
     image.paste(face, (0, 0), mask)
 
 
@@ -141,8 +143,8 @@ def _draw_twinkling_stars(draw: ImageDraw.ImageDraw, scale: float, frame_index: 
         ((255, 151, 111), (166, 86, 76)),
     )
     for star_index, (star_x, star_y) in enumerate(STAR_POSITIONS):
-        phase = (frame_index * 2 + star_index * 7) % 32
-        if phase >= 27:
+        phase = (frame_index + star_index * 7) % 26
+        if phase >= 21:
             continue
         x, y = px(star_x), px(star_y)
         bright, dim = palettes[star_index % len(palettes)]
@@ -165,13 +167,14 @@ def _draw_pumpkin_vines(
     def p(x: float, y: float) -> tuple[int, int]:
         return px(x), px(y)
 
+    loop_phase = 2 * pi * frame_index / 52
     main_vine = []
     back_vine = []
     for x in range(0, width + px(2), px(2)):
         design_x = x / max(scale, 0.01)
-        wave = sin(design_x * 0.15 + frame_index * 0.17)
+        wave = sin(design_x * 0.15 + loop_phase)
         main_vine.append((x, px(103) + round(wave * px(2))))
-        back_vine.append((x, px(100) + round(sin(design_x * 0.11 - frame_index * 0.13) * px(1.5))))
+        back_vine.append((x, px(100) + round(sin(design_x * 0.11 - loop_phase * 2) * px(1.5))))
     draw.line(back_vine, fill=(48, 74, 71), width=px(2))
     draw.line([(x, y - px(1)) for x, y in back_vine], fill=(87, 117, 90), width=px(1))
     draw.line(main_vine, fill=(54, 91, 49), width=px(3))
@@ -181,9 +184,9 @@ def _draw_pumpkin_vines(
     leaf_palette = ((78, 127, 54), (105, 145, 57), (68, 112, 69), (147, 151, 62))
     leaf_positions = (9, 17, 28, 39, 47, 68, 78, 89, 101, 112, 122)
     for leaf_index, leaf_x in enumerate(leaf_positions):
-        phase = frame_index * (0.11 + (leaf_index % 3) * 0.025) + leaf_index * 1.8
+        phase = loop_phase * (2 if leaf_index % 3 == 0 else 1) + leaf_index * 1.8
         sway_x = round(sin(phase) * px(2))
-        anchor_y = px(101) + round(sin(leaf_x * 0.15 + frame_index * 0.17) * px(2))
+        anchor_y = px(101) + round(sin(leaf_x * 0.15 + loop_phase) * px(2))
         direction = -1 if leaf_index % 2 == 0 else 1
         tip = (px(leaf_x) + sway_x, anchor_y - px(5) * direction)
         mid_left = (px(leaf_x) - px(4) + sway_x, anchor_y - px(4) * direction)
@@ -215,7 +218,7 @@ def _draw_pumpkin_vines(
     )
     pumpkin_xs = (px(4), px(50), px(96))
     for pumpkin_index, x in enumerate(pumpkin_xs):
-        phase = frame_index * 0.19 + pumpkin_index * 1.6
+        phase = loop_phase + pumpkin_index * 1.6
         bob = round(sin(phase) * px(1.2))
         y = px(109) + bob
         outline, body, lit, highlight = palettes[pumpkin_index]
@@ -245,7 +248,7 @@ def _draw_pumpkin_vines(
                       fill=outline, width=px(1))
         draw.point((x + px(7), y + px(4)), fill=(255, 210, 117))
         draw.point((x + px(20), y + px(16)), fill=(194, 70, 29))
-        stem_sway = round(sin(frame_index * 0.15 + pumpkin_index) * px(1))
+        stem_sway = round(sin(loop_phase * 2 + pumpkin_index) * px(1))
         draw.polygon(
             ((x + px(11), y + px(2)), (x + px(12) + stem_sway, y - px(3)),
              (x + px(16) + stem_sway, y - px(3)), (x + px(18), y + px(2))),
@@ -258,8 +261,8 @@ def _draw_pumpkin_vines(
         smile_phase = ((frame_index + pumpkin_index * 11) % 52) / 51
         smile = (1 - cos(2 * pi * smile_phase)) / 2
         smile_depth = round(smile * 4)
-        glow = (255, 245, 155) if (frame_index // 2 + pumpkin_index) % 7 < 5 else (255, 195, 89)
-        blink = (frame_index + pumpkin_index * 19) % 48 in (0, 1)
+        glow = (255, 245, 155) if (frame_index + pumpkin_index * 4) % 13 < 9 else (255, 195, 89)
+        blink = (frame_index + pumpkin_index * 19) % 52 in (0, 1)
         if blink:
             draw.line((x + px(6), y + px(7), x + px(10), y + px(7)), fill=glow, width=px(1))
             draw.line((x + px(17), y + px(7), x + px(21), y + px(7)), fill=glow, width=px(1))
@@ -292,35 +295,67 @@ def _draw_halloween_border(
 ) -> None:
     px = lambda value: round(value * scale)
     left, top, right, bottom = px(2), px(34), px(125), px(95)
-    draw.rectangle((left, top, right, bottom), outline=(112, 42, 116), width=px(1))
+    draw.rectangle((left, top, right, bottom), outline=(78, 39, 78), width=px(1))
     draw.rectangle((left + px(1), top + px(1), right - px(1), bottom - px(1)),
-                   outline=(219, 104, 50), width=px(1))
+                   outline=(159, 62, 37), width=px(1))
     draw.rectangle((left + px(2), top + px(2), right - px(2), bottom - px(2)),
-                   outline=(61, 111, 81), width=px(1))
+                   outline=(255, 159, 55), width=px(1))
 
     path = (
-        [(x, top) for x in range(left + px(3), right - px(2))]
-        + [(right - px(2), y) for y in range(top + px(3), bottom - px(2))]
-        + [(x, bottom - px(2)) for x in range(right - px(3), left + px(2), -1)]
-        + [(left + px(2), y) for y in range(bottom - px(3), top + px(2), -1)]
+        [(x, top) for x in range(left + px(8), right - px(7))]
+        + [(right, y) for y in range(top + px(8), bottom - px(7))]
+        + [(x, bottom) for x in range(right - px(8), left + px(7), -1)]
+        + [(left, y) for y in range(bottom - px(8), top + px(7), -1)]
     )
     if not path:
         return
-    colors = (
-        (255, 154, 70), (232, 110, 71), (205, 131, 255),
-        (132, 239, 204), (255, 218, 116), (249, 115, 179),
+
+    # Crawling ember light moves around the frame in a single Halloween fire palette.
+    fire_colors = (
+        (113, 42, 48), (184, 55, 35), (232, 79, 31),
+        (255, 133, 38), (255, 190, 67), (255, 231, 129),
     )
-    movement = round(frame_index * len(path) / frame_count)
-    for dash_index, start in enumerate(range(0, len(path), px(12))):
-        color = colors[dash_index % len(colors)]
-        for length in range(px(5)):
-            x, y = path[(start + movement + length) % len(path)]
-            draw.point((x, y), fill=color)
+    for position, (x, y) in enumerate(path):
+        heat = (position * 3 + frame_index * 3) % 26
+        color_index = 0 if heat < 3 else 1 if heat < 7 else 2 if heat < 13 else 3 if heat < 18 else 4 if heat < 23 else 5
+        draw.point((x, y), fill=fire_colors[color_index])
+
+    # Short pixel flames lick outward from the rail and travel with the ember stream.
+    flame_step = max(1, round(9 * scale))
+    path_motion = round(frame_index * len(path) / frame_count)
+    corners = ((left, top), (right, top), (right, bottom), (left, bottom))
+    for flame_index, start in enumerate(range(0, len(path), flame_step)):
+        x, y = path[(start + path_motion) % len(path)]
+        if any(abs(x - cx) < px(10) and abs(y - cy) < px(10) for cx, cy in corners):
+            continue
+        if y == top:
+            nx, ny, tx, ty = 0, -1, 1, 0
+        elif y == bottom:
+            nx, ny, tx, ty = 0, 1, 1, 0
+        elif x == left:
+            nx, ny, tx, ty = -1, 0, 0, 1
+        else:
+            nx, ny, tx, ty = 1, 0, 0, 1
+        step = max(1, round(scale))
+        flicker = (frame_index // 2 + flame_index * 2) % 4
+        length = (2 + flicker % 3) * step
+        flame = (
+            (x - tx * 2 * step, y - ty * 2 * step),
+            (x + tx * 2 * step, y + ty * 2 * step),
+            (x + tx * step + nx * step, y + ty * step + ny * step),
+            (x + nx * length, y + ny * length),
+            (x - tx * step + nx * step, y - ty * step + ny * step),
+        )
+        draw.polygon(flame, fill=(241, 83, 30), outline=(116, 45, 47))
+        core_end = max(step, length - step)
+        draw.line((x + nx * step, y + ny * step,
+                   x + nx * core_end, y + ny * core_end), fill=(255, 204, 83), width=step)
+        draw.point((x + nx * length, y + ny * length), fill=(255, 242, 167))
 
     # Four tiny jack-o'-lantern plaques make the frame unmistakably Halloween themed.
     for pumpkin_index, (x, y) in enumerate(((4, 36), (116, 36), (4, 86), (116, 86))):
         x, y = px(x), px(y)
-        glow = (255, 235, 135) if (frame_index // 2 + pumpkin_index * 3) % 8 < 6 else (255, 154, 67)
+        glow = (255, 235, 135) if (frame_index // 2 + pumpkin_index * 3) % 13 < 10 else (255, 154, 67)
         draw.rectangle((x + px(1), y + px(2), x + px(7), y + px(6)), fill=(205, 80, 41))
         draw.rectangle((x + px(2), y + px(1), x + px(6), y + px(7)), fill=(240, 119, 45))
         draw.line((x + px(4), y, x + px(5), y + px(1)), fill=(129, 157, 77), width=px(1))
@@ -415,10 +450,10 @@ def build_animation_frames(width: int, height: int) -> tuple[bytes, ...]:
     wordmark_face = (255, 204, 112)
     for index in range(frame_count):
         frame = background.copy()
-        title_bob = round(sin(2 * pi * index / 52) * 2 * scale)
-        _draw_pixel_text(frame, "POOR LOUIS", round(44 * scale) + title_bob,
+        title_bob = round((1 + sin(2 * pi * index / 52)) * scale)
+        _draw_pixel_text(frame, "POOR LOUIS", round(46 * scale) + title_bob,
                          wordmark_face, font_size=16)
-        _draw_pixel_text(frame, "FARMS", round(67 * scale) + title_bob,
+        _draw_pixel_text(frame, "FARMS", round(70 * scale) + title_bob,
                          wordmark_face, font_size=16)
         draw = ImageDraw.Draw(frame)
         _draw_pumpkin_vines(draw, width, height, scale, index)
