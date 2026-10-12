@@ -84,17 +84,25 @@ def build_frame(t: float, width: int = MATRIX_WIDTH, height: int = MATRIX_HEIGHT
     return im
 
 
-def draw_to_canvas(canvas: object, frame: Image.Image) -> None:
+def draw_to_canvas(canvas: object, frame: Image.Image, previous: bytes | None) -> bytes:
     """Copy RGB pixels through the driver's canvas API.
 
     This avoids Pillow's private image-pointer API, which varies between
     Pillow versions and can crash older rgbmatrix Python bindings.
     """
-    pixels = frame.load()
+    current = frame.tobytes()
+    previous_view = memoryview(previous) if previous is not None else None
     for y in range(frame.height):
+        offset = y * frame.width * 3
         for x in range(frame.width):
-            red, green, blue = pixels[x, y]
-            canvas.SetPixel(x, y, red, green, blue)
+            if previous_view is None or (
+                current[offset] != previous_view[offset]
+                or current[offset + 1] != previous_view[offset + 1]
+                or current[offset + 2] != previous_view[offset + 2]
+            ):
+                canvas.SetPixel(x, y, current[offset], current[offset + 1], current[offset + 2])
+            offset += 3
+    return current
 
 
 def main() -> None:
@@ -119,11 +127,15 @@ def main() -> None:
 
     started = time.monotonic()
     next_frame = started
+    blank_frame = bytes(MATRIX_WIDTH * MATRIX_HEIGHT * 3)
+    front_frame = blank_frame
+    back_frame = blank_frame
     try:
         while running:
             now = time.monotonic()
-            draw_to_canvas(canvas, build_frame(now - started))
+            rendered_frame = draw_to_canvas(canvas, build_frame(now - started), back_frame)
             canvas = matrix.SwapOnVSync(canvas)
+            back_frame, front_frame = front_frame, rendered_frame
             next_frame += 1 / 8
             time.sleep(max(0, next_frame - time.monotonic()))
     finally:
