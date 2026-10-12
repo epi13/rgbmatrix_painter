@@ -1,10 +1,25 @@
+# RGB Matrix Web Editor and Poor Louis Farms Sign
 
-# RGB Matrix Web Editor & Image Converter
-<<<<<<< HEAD
-testing
-=======
+The existing web editor works on a computer on the local network. A standalone Raspberry Pi service also displays an animated Poor Louis Farms advertisement directly on a HUB75 matrix.
 
->>>>>>> 871ed5c1af79c38f7232b38fa8cf92d770a5c685
+## Animated farm sign
+
+The sign draws a warm roadside farm sign with slowly drifting clouds, a pulsing sun, and swaying crop rows. It uses the matrix dimensions and GPIO settings in `config.py` and updates at 12 frames per second.
+
+The sign expects the `rgbmatrix` Python binding from [`rpi-rgb-led-matrix`](https://github.com/hzeller/rpi-rgb-led-matrix) and Pillow to be installed for the Pi's system Python. On Raspberry Pi OS, install Pillow with `sudo apt install python3-pil`, and install the matrix library's Python binding using its upstream installation instructions for your Pi and panel.
+
+After copying this repository to the Pi, install and start the boot service:
+
+```bash
+sudo ./deploy/install_service.sh
+```
+
+The installer puts the sign and matrix config in `/opt/rgbmatrix_painter`, enables `poor-louis-farms.service` at boot, and starts it immediately. Inspect it with `sudo systemctl status poor-louis-farms.service` and its logs with `sudo journalctl -u poor-louis-farms.service -f`.
+
+The service runs as root because the RGB matrix driver needs direct GPIO access. It restarts automatically if the process exits. Adjust `MATRIX_WIDTH`, `MATRIX_HEIGHT`, `CHAIN_LENGTH`, `PARALLEL`, `GPIO_SLOWDOWN`, and `PANEL_BRIGHTNESS` in `config.py` for the connected panel before installation.
+
+---
+
 A lightweight 64×64 (or any size) RGB LED matrix **image importer + pixel editor** served over the web. Runs on your computer and is accessible from other devices on your LAN.
 
 - Load images (PNG/JPG/GIF) and auto-resize/letterbox to your matrix size
