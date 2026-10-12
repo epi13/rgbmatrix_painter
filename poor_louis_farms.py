@@ -84,6 +84,19 @@ def build_frame(t: float, width: int = MATRIX_WIDTH, height: int = MATRIX_HEIGHT
     return im
 
 
+def draw_to_canvas(canvas: object, frame: Image.Image) -> None:
+    """Copy RGB pixels through the driver's canvas API.
+
+    This avoids Pillow's private image-pointer API, which varies between
+    Pillow versions and can crash older rgbmatrix Python bindings.
+    """
+    pixels = frame.load()
+    for y in range(frame.height):
+        for x in range(frame.width):
+            red, green, blue = pixels[x, y]
+            canvas.SetPixel(x, y, red, green, blue)
+
+
 def main() -> None:
     from rgbmatrix import RGBMatrix, RGBMatrixOptions
 
@@ -95,6 +108,7 @@ def main() -> None:
     options.gpio_slowdown = GPIO_SLOWDOWN
     options.brightness = PANEL_BRIGHTNESS
     matrix = RGBMatrix(options=options)
+    canvas = matrix.CreateFrameCanvas()
 
     running = True
     def stop(_signum: int, _frame: object) -> None:
@@ -108,8 +122,9 @@ def main() -> None:
     try:
         while running:
             now = time.monotonic()
-            matrix.SetImage(build_frame(now - started), 0, 0)
-            next_frame += 1 / 12
+            draw_to_canvas(canvas, build_frame(now - started))
+            canvas = matrix.SwapOnVSync(canvas)
+            next_frame += 1 / 8
             time.sleep(max(0, next_frame - time.monotonic()))
     finally:
         matrix.Clear()
