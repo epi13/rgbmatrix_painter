@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import signal
 import time
+from math import sin
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -23,20 +24,20 @@ from config import (
 )
 
 
-BAT_WINGS = (
-    ("#..##..#", "##.##.##", ".######.", "..####..", "...##..."),
-    ("...##...", "..####..", ".######.", "##.##.##", "#..##..#"),
+GHOST_FRAMES = (
+    ("..#####..", ".#######.", "#########", "##.###.##", "#########", "#########", "#.#.#.#.#"),
+    ("..#####..", ".#######.", "#########", "##.###.##", "#########", "#########", "##.#.#.##"),
 )
-CROP_SWAY = (-2, -1, 0, 1, 2, 3, 2, 1, 0, -1, -2, -3, -2)
 STAR_POSITIONS = (
-    (6, 6), (17, 14), (29, 4), (39, 22), (51, 8), (64, 27), (74, 5),
-    (85, 23), (89, 4), (8, 28), (23, 30), (45, 31), (63, 30), (83, 32),
-    (8, 38), (119, 38), (20, 38), (107, 38), (8, 56), (119, 56),
-    (20, 59), (108, 59), (8, 72), (119, 72), (8, 88), (119, 88),
-    (20, 91), (108, 91), (6, 97), (96, 97), (13, 116), (20, 124),
-    (43, 119), (70, 123), (94, 120), (8, 126),
+    (35, 4), (46, 16), (58, 7), (72, 25), (83, 5), (91, 30), (41, 29),
+    (8, 38), (119, 38), (20, 38), (107, 38), (8, 55), (119, 55),
+    (20, 60), (108, 60), (8, 72), (119, 72), (8, 89), (119, 89),
+    (20, 92), (108, 92), (6, 97), (96, 97), (18, 104), (47, 101),
+    (80, 99), (124, 105), (36, 124), (72, 100), (93, 125), (4, 121),
+    (30, 113), (63, 96), (115, 116), (54, 30), (99, 20), (25, 26),
 )
 CAT_TAIL_SWAY = (-3, -2, 0, 2, 3, 2, 1, 0, -1, -2, -3, -1, 1)
+GHOST_BOB = (0, -1, -2, -1, 0, 1, 2, 1, 0, -1, -1, 0, 1)
 
 
 def _font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
@@ -53,35 +54,42 @@ def _font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     return ImageFont.load_default()
 
 
-def _centered_text(
-    draw: ImageDraw.ImageDraw,
-    text: str,
-    font: ImageFont.ImageFont,
-    width: int,
-    y: int,
-    color: tuple[int, int, int],
+def _draw_pixel_text(
+    image: Image.Image, text: str, top: int, face: tuple[int, int, int], font_size: int = 16
 ) -> None:
+    """Draw crisp 2x2-pixel lettering with a stepped, extruded 3D edge."""
+    width, height = image.size
+    pixel_block = 2
+    small = Image.new("L", (width // pixel_block, height // pixel_block), 0)
+    draw = ImageDraw.Draw(small)
+    font = _font(max(1, round(font_size / pixel_block)))
     box = draw.textbbox((0, 0), text, font=font)
-    text_width = box[2] - box[0]
-    draw.text(((width - text_width) // 2 - box[0], y - box[1]), text, font=font, fill=color)
+    x = (small.width - (box[2] - box[0])) // 2 - box[0]
+    y = round(top / pixel_block) - box[1]
+    draw.text((x, y), text, font=font, fill=255)
+    mask = small.point(lambda value: 255 if value >= 128 else 0)
+    mask = mask.resize(image.size, Image.Resampling.NEAREST)
+
+    # Offset copies form a blocky extrusion; both title lines share the same face color and size.
+    image.paste((67, 35, 55), (6, 6), mask)
+    image.paste((139, 61, 48), (4, 4), mask)
+    image.paste((205, 116, 55), (2, 2), mask)
+    image.paste((255, 238, 183), (-1, -1), mask)
+    image.paste(face, (0, 0), mask)
 
 
-def _draw_bat(
-    image: Image.Image,
-    x: int,
-    y: int,
-    wing_frame: int,
-    scale: float,
-    color: tuple[int, int, int],
-) -> None:
+def _draw_ghost(image: Image.Image, x: int, y: int, frame_index: int, scale: float) -> None:
     draw = ImageDraw.Draw(image)
-    step = max(1, round(scale))
-    for row, pattern in enumerate(BAT_WINGS[wing_frame]):
-        for column, pixel in enumerate(pattern):
+    pattern = GHOST_FRAMES[(frame_index // 2) % len(GHOST_FRAMES)]
+    step = max(1, round(scale * 2))
+    color = (212, 208, 238)
+    for row, line in enumerate(pattern):
+        for column, pixel in enumerate(line):
             if pixel == "#":
-                left = x + column * step
-                top = y + row * step
+                left, top = x + column * step, y + row * step
                 draw.rectangle((left, top, left + step - 1, top + step - 1), fill=color)
+    draw.point((x + step * 2, y + step * 3), fill=(37, 30, 56))
+    draw.point((x + step * 6, y + step * 3), fill=(37, 30, 56))
 
 
 def _draw_twinkling_stars(draw: ImageDraw.ImageDraw, scale: float, frame_index: int) -> None:
@@ -103,17 +111,78 @@ def _draw_twinkling_stars(draw: ImageDraw.ImageDraw, scale: float, frame_index: 
             draw.point((x, y + 1), fill=sparkle)
 
 
-def _draw_swaying_crops(
+def _draw_pumpkin_vines(
     draw: ImageDraw.ImageDraw, width: int, height: int, scale: float, frame_index: int
 ) -> None:
+    """Draw a lively pixel-art pumpkin patch along the bottom of the sign."""
     px = lambda value: max(1, round(value * scale))
-    for crop_index, crop_x in enumerate(range(px(8), width, px(18))):
-        sway = round(CROP_SWAY[(frame_index // 2 + crop_index * 3) % len(CROP_SWAY)] * scale)
-        x = crop_x + sway
-        crop_y = px(119 + (crop_x % px(7)))
-        draw.line((x, height - 1, x, crop_y), fill=(112, 145, 69), width=px(1))
-        draw.line((x, px(124), x - px(3), px(121)), fill=(137, 163, 77), width=px(1))
-        draw.line((x, px(126), x + px(3), px(123)), fill=(137, 163, 77), width=px(1))
+    vine_points = []
+    for x in range(0, width + px(2), px(2)):
+        wave = sin((x / max(scale, 0.01) * 0.16) + frame_index * 0.22)
+        vine_points.append((x, px(103) + round(wave * px(2))))
+    draw.line(vine_points, fill=(58, 105, 57), width=px(2))
+    draw.line([(x, y - px(1)) for x, y in vine_points], fill=(117, 157, 70), width=px(1))
+
+    # Curled tendrils and leaves wave independently along the vine.
+    for leaf_index, leaf_x in enumerate((17, 39, 70, 89, 117)):
+        phase = frame_index * 0.13 + leaf_index * 1.7
+        sway = round(sin(phase) * px(2))
+        anchor_y = px(103) + round(sin(leaf_x * 0.16 + frame_index * 0.22) * px(2))
+        leaf_y = anchor_y - px(3) + sway
+        draw.polygon(
+            ((px(leaf_x) - px(4), leaf_y), (px(leaf_x) - px(1), leaf_y - px(3)),
+             (px(leaf_x) + px(4), leaf_y - px(2)), (px(leaf_x) + px(2), leaf_y + px(1))),
+            fill=(76, 130, 59), outline=(146, 170, 75),
+        )
+        curl = round(sin(phase + 1.1) * px(2))
+        draw.line(
+            ((px(leaf_x), anchor_y), (px(leaf_x) + px(2) + curl, anchor_y - px(3)),
+             (px(leaf_x) + px(5) + curl, anchor_y - px(3))),
+            fill=(150, 174, 83), width=px(1),
+        )
+
+    pumpkin_xs = (px(4), px(50), px(96))
+    for pumpkin_index, x in enumerate(pumpkin_xs):
+        bob = round(sin(frame_index * 0.20 + pumpkin_index * 1.9) * px(1.5))
+        y = px(109) + bob
+        # Chunky stepped silhouette and three lobes make each pumpkin read at a glance.
+        silhouette = (
+            (x + px(7), y), (x + px(19), y), (x + px(22), y + px(3)),
+            (x + px(25), y + px(3)), (x + px(27), y + px(6)),
+            (x + px(27), y + px(12)), (x + px(24), y + px(15)),
+            (x + px(20), y + px(17)), (x + px(6), y + px(17)),
+            (x + px(2), y + px(15)), (x, y + px(12)), (x, y + px(6)),
+            (x + px(3), y + px(3)), (x + px(6), y + px(3)),
+        )
+        draw.polygon(silhouette, fill=(231, 105, 30), outline=(255, 174, 69))
+        draw.rectangle((x + px(9), y + px(1), x + px(17), y + px(15)), fill=(255, 143, 38))
+        draw.line((x + px(5), y + px(5), x + px(5), y + px(13)), fill=(188, 72, 28), width=px(1))
+        draw.line((x + px(21), y + px(5), x + px(21), y + px(13)), fill=(188, 72, 28), width=px(1))
+        stem_sway = round(sin(frame_index * 0.16 + pumpkin_index) * px(1))
+        draw.polygon(
+            ((x + px(11), y + px(1)), (x + px(12) + stem_sway, y - px(3)),
+             (x + px(16) + stem_sway, y - px(3)), (x + px(17), y + px(1))),
+            fill=(99, 133, 59), outline=(163, 177, 83),
+        )
+        flicker = (frame_index // 2 + pumpkin_index * 5) % 12
+        eye = (255, 238, 123) if flicker < 8 else (255, 187, 76)
+        if flicker not in (10, 11):
+            draw.polygon(
+                ((x + px(6), y + px(7)), (x + px(9), y + px(5)), (x + px(10), y + px(9))),
+                fill=eye,
+            )
+            draw.polygon(
+                ((x + px(17), y + px(9)), (x + px(18), y + px(5)), (x + px(21), y + px(7))),
+                fill=eye,
+            )
+            draw.polygon(
+                ((x + px(7), y + px(11)), (x + px(20), y + px(11)),
+                 (x + px(17), y + px(14)), (x + px(10), y + px(14))),
+                fill=(255, 210, 102),
+            )
+        else:
+            draw.line((x + px(6), y + px(7), x + px(10), y + px(7)), fill=eye, width=px(1))
+            draw.line((x + px(17), y + px(7), x + px(21), y + px(7)), fill=eye, width=px(1))
 
 
 def _draw_moving_border(
@@ -179,35 +248,28 @@ def _draw_static_sign(width: int, height: int) -> tuple[Image.Image, float]:
     draw.ellipse((px(96), px(4), px(121), px(29)), fill=(255, 225, 164))
     draw.ellipse((px(105), px(0), px(130), px(24)), fill=sky)
 
-    # Orchard silhouettes and a low field frame the central name.
+    # Jagged farm silhouettes frame a clear night sky above the sign.
     draw.polygon(
         ((0, px(33)), (px(16), px(28)), (px(36), px(34)), (px(55), px(27)),
          (px(78), px(34)), (px(101), px(27)), (width, px(34)), (width, px(42)),
          (0, px(42))), fill=(35, 48, 65),
     )
-    draw.rectangle((0, px(96), width, height), fill=(22, 36, 42))
-    draw.polygon(((0, px(113)), (width, px(106)), (width, height), (0, height)), fill=(30, 54, 43))
+    draw.rectangle((0, px(96), width, height), fill=(16, 30, 37))
+    draw.polygon(((0, px(112)), (px(42), px(107)), (px(88), px(112)),
+                  (width, px(106)), (width, height), (0, height)), fill=(23, 45, 39))
 
-    # Deep forest-green panel makes the farm name the visual anchor.
+    # A carved, beveled farm sign makes the matched wordmark the visual anchor.
     left, top, right, bottom = px(3), px(35), px(124), px(94)
-    draw.rounded_rectangle(
-        (left, top, right, bottom), radius=px(4), fill=(17, 34, 39),
-        outline=(90, 67, 112), width=px(2),
-    )
-    draw.rounded_rectangle(
-        (left + px(3), top + px(3), right - px(3), bottom - px(3)),
-        radius=px(2), fill=(22, 52, 43), outline=(89, 111, 72), width=px(1),
-    )
+    draw.rectangle((left + px(3), top + px(3), right, bottom), fill=(8, 14, 20))
+    draw.rectangle((left, top, right - px(3), bottom - px(3)), fill=(101, 60, 70))
+    draw.rectangle((left + px(2), top + px(2), right - px(5), bottom - px(5)), fill=(35, 29, 48))
+    draw.rectangle((left + px(5), top + px(5), right - px(8), bottom - px(8)), fill=(22, 48, 45))
+    draw.line((left + px(7), top + px(7), right - px(10), top + px(7)), fill=(93, 135, 87))
+    draw.line((left + px(7), bottom - px(10), right - px(10), bottom - px(10)), fill=(13, 29, 33))
 
-    title_font = _font(px(17))
-    farm_font = _font(px(28))
-    tagline_font = _font(px(12))
-    _centered_text(draw, "POOR LOUIS", title_font, width, px(40) + px(1), (5, 16, 20))
-    _centered_text(draw, "POOR LOUIS", title_font, width, px(40), (255, 243, 216))
-    draw.line((px(23), px(63), width - px(23), px(63)), fill=(136, 107, 136), width=px(1))
-    _centered_text(draw, "FARMS", farm_font, width, px(65) + px(1), (69, 37, 29))
-    _centered_text(draw, "FARMS", farm_font, width, px(65), (255, 171, 77))
-    _centered_text(draw, "THANK YOU!", tagline_font, width - px(27), px(99), (255, 232, 190))
+    wordmark_face = (255, 204, 112)
+    _draw_pixel_text(image, "POOR LOUIS", px(43), wordmark_face, font_size=16)
+    _draw_pixel_text(image, "FARMS", px(66), wordmark_face, font_size=16)
 
     return image, scale
 
@@ -215,27 +277,20 @@ def _draw_static_sign(width: int, height: int) -> tuple[Image.Image, float]:
 def build_animation_frames(width: int, height: int) -> tuple[bytes, ...]:
     """Pre-render the farm sign and Halloween animation frames at startup."""
     background, scale = _draw_static_sign(width, height)
-    bat_width = len(BAT_WINGS[0][0]) * max(1, round(scale))
-    step = max(1, round(2 * scale))
-    first_x = max(0, round(8 * scale))
-    last_x = max(first_x, width - bat_width - round(8 * scale))
-    positions = list(range(first_x, last_x + 1, step)) or [first_x]
-    if len(positions) > 1:
-        positions.extend(positions[-2:0:-1])
-
+    frame_count = 104
     frames = []
-    for index, x in enumerate(positions):
+    for index in range(frame_count):
         frame = background.copy()
-        _draw_bat(frame, x, round(9 * scale), (index // 2) % 2, scale, (177, 152, 207))
-        _draw_bat(
-            frame, first_x + last_x - x, round(25 * scale), (index // 2 + 1) % 2,
-            scale, (111, 104, 142),
-        )
+        ghost_phase = (index % 52) / 51
+        ghost_x = round((35 + 96 * ghost_phase if ghost_phase <= 0.5
+                         else 83 - 96 * (ghost_phase - 0.5)) * scale)
+        ghost_y = round((11 + GHOST_BOB[(index // 2) % len(GHOST_BOB)]) * scale)
+        _draw_ghost(frame, ghost_x, ghost_y, index, scale)
         draw = ImageDraw.Draw(frame)
-        _draw_swaying_crops(draw, width, height, scale, index)
+        _draw_pumpkin_vines(draw, width, height, scale, index)
         _draw_twinkling_stars(draw, scale, index)
-        _draw_moving_border(draw, scale, index, len(positions))
-        _draw_black_cat(frame, width - round(27 * scale), height - round(27 * scale), scale, index)
+        _draw_moving_border(draw, scale, index, frame_count)
+        _draw_black_cat(frame, round(4 * scale), round(7 * scale), scale, index)
         frames.append(frame.tobytes())
     return tuple(frames)
 
