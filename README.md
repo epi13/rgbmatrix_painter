@@ -4,7 +4,7 @@ The existing web editor works on a computer on the local network. A standalone R
 
 ## Animated farm sign
 
-The sign features a large Poor Louis Farms name, crescent moon, twinkling stars, a moving Halloween border, flying bats, a blinking black cat, and swaying crops. It uses the matrix dimensions and GPIO settings in `config.py`. All animation frames are rendered once at startup; each update writes only pixels that changed. The scene updates at eight frames per second while the matrix refresh continues independently.
+The sign features a bold, pixelated Poor Louis Farms wordmark with a matching amber face and blocky 3D extrusion on both lines, a crescent moon, twinkling stars, a moving Halloween border, a drifting ghost, a blinking black cat, and animated jack-o'-lanterns with curling vines. It uses the matrix dimensions and GPIO settings in `config.py`. All animation frames are rendered once at startup; each update writes only pixels that changed. The scene updates at eight frames per second while the matrix refresh continues independently.
 
 For the 2×2 64×64 panel setup, `config.py` uses a four-bit PWM depth, no temporal dithering, a 120Hz refresh cap, and GPIO slowdown 3 to give the Pi Zero 2 W more signal timing margin. The refresh thread uses precise busy waiting on isolated CPU 3 to avoid timing jitter; device interrupts are routed to CPUs 0–2 so Wi-Fi and normal system work can use the other cores. This reserves one of the Pi Zero 2 W's four cores for panel refresh. The scene updates at eight frames per second using pre-rendered frames and small pixel changes.
 
