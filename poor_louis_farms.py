@@ -1,11 +1,13 @@
 """Low-load Poor Louis Farms fall sign for a HUB75 RGB matrix."""
 from __future__ import annotations
 
+import resource
 import signal
 import time
 from functools import lru_cache
-from math import cos, pi, sin
+from math import cos, isclose, isfinite, pi, sin
 from pathlib import Path
+from typing import Callable, Iterable, Iterator
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
@@ -25,6 +27,11 @@ from config import (
 )
 
 
+ANIMATION_LOOP_SECONDS = 6.5
+DESIGN_TICKS_PER_SECOND = 8.0
+LOOP_TICKS = ANIMATION_LOOP_SECONDS * DESIGN_TICKS_PER_SECOND
+
+
 STAR_POSITIONS = (
     (4, 4), (14, 5), (34, 7), (43, 17), (54, 4), (62, 25), (74, 10),
     (82, 29), (90, 5), (127, 3), (39, 27), (55, 30), (76, 28), (89, 32),
@@ -39,6 +46,17 @@ STAR_POSITIONS = (
     (3, 46), (125, 45), (3, 56), (125, 62), (4, 88), (123, 77),
     (26, 112), (59, 109), (86, 115), (121, 110),
 )
+
+
+def _mix_color(first: tuple[int, int, int], second: tuple[int, int, int], amount: float) -> tuple[int, int, int]:
+    amount = max(0.0, min(1.0, amount))
+    return tuple(round(a + (b - a) * amount) for a, b in zip(first, second))
+
+
+def _shade_color(color: tuple[int, int, int], factor: float) -> tuple[int, int, int]:
+    return tuple(max(0, min(255, round(channel * factor))) for channel in color)
+
+
 @lru_cache(maxsize=16)
 def _font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     candidates = (
@@ -54,16 +72,9 @@ def _font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     return ImageFont.load_default()
 
 
-def _draw_pixel_text(
-    image: Image.Image,
-    text: str,
-    top: int,
-    face: tuple[int, int, int],
-    frame_index: int,
-    font_size: int = 16,
-) -> None:
-    """Draw high-contrast pixel lettering with a moving, clipped shine."""
-    width, height = image.size
+@lru_cache(maxsize=32)
+def _text_masks(width: int, height: int, text: str, top: int, font_size: int) -> tuple[Image.Image, ...]:
+    """Reuse glyphs and outlines for the few pixel positions in the title bob."""
     pixel_block = 2
     small = Image.new("L", (width // pixel_block, height // pixel_block), 0)
     draw = ImageDraw.Draw(small)
@@ -73,20 +84,33 @@ def _draw_pixel_text(
     y = round(top / pixel_block) - box[1]
     draw.text((x, y), text, font=font, fill=255)
     mask = small.point(lambda value: 255 if value >= 128 else 0)
-    mask = mask.resize(image.size, Image.Resampling.NEAREST)
+    mask = mask.resize((width, height), Image.Resampling.NEAREST)
+    expanded = mask.filter(ImageFilter.MaxFilter(5))
+    inner_rim = mask.filter(ImageFilter.MaxFilter(3))
+    return mask, ImageChops.subtract(expanded, inner_rim), ImageChops.subtract(inner_rim, mask)
+
+
+def _draw_pixel_text(
+    image: Image.Image,
+    text: str,
+    top: int,
+    face: tuple[int, int, int],
+    frame_index: float,
+    font_size: int = 16,
+) -> None:
+    """Draw mint lettering with changing reflected light and a feathered shine."""
+    width, height = image.size
+    mask, outer_stroke, dark_stroke = _text_masks(width, height, text, top, font_size)
+    reflected_light = (1 + sin(2 * pi * frame_index / 13)) / 2
 
     # Warm stepped extrusion gives the mint face depth while keeping the edges crisp.
     image.paste((27, 17, 47), (5, 5), mask)
-    image.paste((74, 34, 91), (4, 4), mask)
-    image.paste((143, 54, 89), (3, 3), mask)
-    image.paste((226, 91, 49), (2, 2), mask)
+    image.paste(_mix_color((54, 28, 80), (100, 54, 126), reflected_light), (4, 4), mask)
+    image.paste(_mix_color((113, 43, 85), (172, 70, 112), reflected_light), (3, 3), mask)
+    image.paste(_mix_color((188, 73, 44), (246, 131, 57), reflected_light), (2, 2), mask)
     image.paste((255, 150, 55), (1, 1), mask)
 
-    expanded = mask.filter(ImageFilter.MaxFilter(5))
-    inner_rim = mask.filter(ImageFilter.MaxFilter(3))
-    outer_stroke = ImageChops.subtract(expanded, inner_rim)
-    dark_stroke = ImageChops.subtract(inner_rim, mask)
-    image.paste((255, 145, 61), (0, 0), outer_stroke)
+    image.paste(_mix_color((234, 108, 42), (255, 182, 78), reflected_light), (0, 0), outer_stroke)
     image.paste((4, 12, 20), (0, 0), dark_stroke)
 
     pulse = (1 + sin(2 * pi * frame_index / 26)) / 2
@@ -96,23 +120,28 @@ def _draw_pixel_text(
     # A diagonal glint travels over both lines and is clipped to the letter mask.
     shine = Image.new("L", image.size, 0)
     shine_draw = ImageDraw.Draw(shine)
-    center = (frame_index * 5) % (width + 28) - 14
-    shine_draw.polygon(
-        ((center - 4, 0), (center + 1, 0), (center - 23, height), (center - 28, height)),
-        fill=176,
-    )
+    center = (frame_index / 26 % 1) * (width + 36) - 18
+    for radius, opacity in ((8, 35), (5, 90), (2, 215)):
+        shine_draw.polygon(
+            ((round(center - radius), 0), (round(center + radius), 0),
+             (round(center + radius - 24), height), (round(center - radius - 24), height)),
+            fill=opacity,
+        )
     shine_mask = ImageChops.multiply(mask, shine)
     image.paste((230, 255, 234), (0, 0), shine_mask)
 
 
-def _draw_witch_broom(image: Image.Image, x: int, y: int, scale: float, frame_index: int) -> None:
+def _draw_witch_broom(image: Image.Image, x: int, y: int, scale: float, frame_index: float) -> None:
     """Draw a bright, lively witch with a fluttering cape and animated broom."""
     draw = ImageDraw.Draw(image)
     unit = max(1, round(scale))
     point = lambda column, row: (x + column * unit, y + row * unit)
-    flutter = (frame_index // 2) % 4
+    flutter = int(frame_index // 2) % 4
     broom_tilt = (0, 1, 0, -1)[flutter]
-    broom_flicker = frame_index % 4
+    broom_flicker = int(frame_index) % 4
+    moonlight = (1 + sin(frame_index * 2 * pi / 13)) / 2
+    cape_light = _mix_color((73, 30, 117), (128, 57, 166), moonlight)
+    rim_light = _mix_color((190, 102, 226), (245, 180, 255), moonlight)
 
     # A glowing, rippled broom and bristles make the ride read clearly in motion.
     draw.polygon(
@@ -135,12 +164,13 @@ def _draw_witch_broom(image: Image.Image, x: int, y: int, scale: float, frame_in
         tuple(point(*p) for p in ((13, 8), (21, 8), (24, 12), (22, 14),
                                    (19, 13), (17, cape_tail - 2), (14, 14),
                                    (10 - flutter % 2, cape_tail), (11, 11))),
-        fill=(91, 39, 132), outline=(226, 125, 238),
+        fill=cape_light, outline=rim_light,
     )
     draw.line((point(13, 10), point(11 - flutter % 2, 13 + flutter % 3)),
               fill=(255, 133, 220), width=unit)
     draw.line((point(19, 10), point(21, 12)), fill=(255, 206, 111), width=unit * 2)
-    draw.line((point(14, 11), point(18, 12)), fill=(160, 97, 222), width=unit)
+    draw.line((point(14, 11), point(18, 12)),
+              fill=_mix_color((133, 70, 192), (217, 139, 239), moonlight), width=unit)
 
     # Bright hair frames a clearly lit face beneath a high-contrast witch's hat.
     draw.rectangle((x + 17 * unit, y + 5 * unit, x + 23 * unit, y + 11 * unit), fill=(235, 117, 77))
@@ -150,7 +180,7 @@ def _draw_witch_broom(image: Image.Image, x: int, y: int, scale: float, frame_in
     draw.polygon(
         tuple(point(*p) for p in ((13, 5), (19, 4), (21, 0), (24, 4),
                                    (29, 6), (24, 7), (15, 7))),
-        fill=(55, 29, 99), outline=(222, 157, 255),
+        fill=_mix_color((40, 22, 84), (79, 39, 123), moonlight), outline=rim_light,
     )
     draw.line((point(17, 5), point(25, 5)), fill=(255, 153, 79), width=unit)
     draw.line((point(19, 1), point(22, 2)), fill=(246, 211, 255), width=unit)
@@ -164,16 +194,18 @@ def _draw_witch_broom(image: Image.Image, x: int, y: int, scale: float, frame_in
     for trail_index, trail_x in enumerate((-4, -9, -14)):
         trail_phase = (frame_index + trail_index * 3) % 8
         if trail_phase < 5:
-            trail_y = 9 + ((trail_index * 3 + frame_index // 2) % 7) - trail_phase // 2
+            trail_y = round(11 + sin(frame_index * 2 * pi / 13 + trail_index * 2) * 3)
             tx, ty = point(trail_x, trail_y)
-            color = trail_palette[(frame_index // 2 + trail_index) % len(trail_palette)]
+            palette_index = int(frame_index // 2 + trail_index) % len(trail_palette)
+            glow = sin(pi * trail_phase / 5) ** 0.5
+            color = _shade_color(trail_palette[palette_index], 0.3 + glow * 0.7)
             draw.point((tx, ty), fill=color)
-            if trail_phase in (0, 1):
+            if trail_phase < 2:
                 draw.line((tx - unit, ty, tx + unit, ty), fill=color)
                 draw.line((tx, ty - unit, tx, ty + unit), fill=color)
 
 
-def _draw_twinkling_stars(draw: ImageDraw.ImageDraw, scale: float, frame_index: int) -> None:
+def _draw_twinkling_stars(draw: ImageDraw.ImageDraw, scale: float, frame_index: float) -> None:
     """Cycle colorful cross-sparkles around the title and Halloween scene."""
     px = lambda value: round(value * scale)
     palettes = (
@@ -184,26 +216,27 @@ def _draw_twinkling_stars(draw: ImageDraw.ImageDraw, scale: float, frame_index: 
     )
     for star_index, (star_x, star_y) in enumerate(STAR_POSITIONS):
         phase = (frame_index + star_index * 7) % 26
-        if phase >= 24:
-            continue
         x, y = px(star_x), px(star_y)
         bright, dim = palettes[star_index % len(palettes)]
-        color = bright if phase < 12 else dim
+        intensity = ((1 + cos(2 * pi * phase / 26)) / 2) ** 2
+        color = _mix_color(_shade_color(dim, 0.35), bright, intensity)
         draw.point((x, y), fill=color)
-        if phase < 9:
-            radius = 3 if phase < 3 and star_index % 3 == 0 else 2 if phase < 6 else 1
-            draw.line((x - radius, y, x + radius, y), fill=bright)
-            draw.line((x, y - radius, x, y + radius), fill=bright)
-            if phase < 4:
-                draw.line((x - 1, y - 1, x + 1, y + 1), fill=bright)
-                draw.line((x - 1, y + 1, x + 1, y - 1), fill=bright)
+        if intensity > 0.18:
+            radius = 3 if intensity > 0.82 and star_index % 3 == 0 else 2 if intensity > 0.45 else 1
+            ray_color = _shade_color(bright, intensity ** 0.5)
+            draw.line((x - radius, y, x + radius, y), fill=ray_color)
+            draw.line((x, y - radius, x, y + radius), fill=ray_color)
+            if intensity > 0.6:
+                draw.line((x - 1, y - 1, x + 1, y + 1), fill=ray_color)
+                draw.line((x - 1, y + 1, x + 1, y - 1), fill=ray_color)
             if star_index % 4 == 0:
-                draw.point((x - 2, y - 2), fill=(255, 246, 217))
-                draw.point((x + 2, y + 2), fill=(255, 246, 217))
+                satellite = _shade_color((255, 246, 217), intensity)
+                draw.point((x - 2, y - 2), fill=satellite)
+                draw.point((x + 2, y + 2), fill=satellite)
 
 
 def _draw_pumpkin_vines(
-    draw: ImageDraw.ImageDraw, width: int, height: int, scale: float, frame_index: int
+    draw: ImageDraw.ImageDraw, width: int, height: int, scale: float, frame_index: float
 ) -> None:
     """Draw detailed, animated jack-o'-lanterns among curling, layered vines."""
     px = lambda value: max(1, round(value * scale))
@@ -234,7 +267,8 @@ def _draw_pumpkin_vines(
         tip = (px(leaf_x) + sway_x, anchor_y - px(5) * direction)
         mid_left = (px(leaf_x) - px(4) + sway_x, anchor_y - px(4) * direction)
         mid_right = (px(leaf_x) + px(4) + sway_x, anchor_y - px(3) * direction)
-        leaf_color = leaf_palette[leaf_index % len(leaf_palette)]
+        leaf_light = 0.85 + 0.3 * (1 + sin(loop_phase * 2 + leaf_index * 0.8)) / 2
+        leaf_color = _shade_color(leaf_palette[leaf_index % len(leaf_palette)], leaf_light)
         base = (px(leaf_x), anchor_y)
         draw.polygon((base, mid_left, tip, mid_right), fill=leaf_color, outline=(174, 183, 92))
         draw.line((base, tip), fill=(190, 190, 96), width=px(1))
@@ -264,7 +298,10 @@ def _draw_pumpkin_vines(
         phase = loop_phase + pumpkin_index * 1.6
         bob = round(sin(phase) * px(1.8))
         y = px(109) + bob
-        outline, body, lit, highlight = palettes[pumpkin_index]
+        firelight = (1 + sin(loop_phase * 2 + pumpkin_index * 2)) / 2
+        outline, body, lit, highlight = (
+            _shade_color(color, 0.85 + 0.2 * firelight) for color in palettes[pumpkin_index]
+        )
         # Deep silhouette, rounded lobes, bright center, and dark rib grooves.
         silhouette = (
             (x + px(7), y), (x + px(19), y), (x + px(22), y + px(2)),
@@ -301,11 +338,11 @@ def _draw_pumpkin_vines(
                   fill=(195, 187, 92), width=px(1))
 
         # Carved faces morph from a straight baseline mouth into a broad smile, then reset.
-        smile_phase = ((frame_index + pumpkin_index * 7) % 26) / 25
+        smile_phase = ((frame_index + pumpkin_index * 7) % 26) / 26
         smile = (1 - cos(2 * pi * smile_phase)) / 2
         smile_depth = round(smile * 4)
         cutout = (17, 9, 10)
-        blink = (frame_index + pumpkin_index * 13) % 26 in (0, 1, 2)
+        blink = (frame_index + pumpkin_index * 13) % 26 < 3
         if blink:
             draw.line((x + px(6), y + px(7), x + px(10), y + px(7)), fill=cutout, width=px(2))
             draw.line((x + px(17), y + px(7), x + px(21), y + px(7)), fill=cutout, width=px(2))
@@ -332,27 +369,28 @@ def _draw_pumpkin_vines(
 
 
 def _draw_halloween_border(
-    draw: ImageDraw.ImageDraw, scale: float, frame_index: int, frame_count: int
+    draw: ImageDraw.ImageDraw, scale: float, frame_index: float, frame_count: float
 ) -> None:
     px = lambda value: round(value * scale)
     left, top, right, bottom = px(2), px(34), px(125), px(95)
+    cycle = 2 * pi * frame_index / frame_count
     # Each side ripples independently; corner gaps are filled by pixel pumpkins.
     path: list[tuple[int, int, int, int, int, int]] = []
     for x in range(left + px(10), right - px(9)):
         design_x = x / max(scale, 0.01)
-        ripple = round(sin(design_x * 0.25 + frame_index * 0.61) * px(3.0))
+        ripple = round(sin(design_x * 0.25 + cycle * 5) * px(3.0))
         path.append((x, top + px(1) + ripple, 0, -1, 1, 0))
     for y in range(top + px(10), bottom - px(9)):
         design_y = y / max(scale, 0.01)
-        ripple = round(sin(design_y * 0.22 - frame_index * 0.57) * px(2.2))
+        ripple = round(sin(design_y * 0.22 - cycle * 5) * px(2.2))
         path.append((right - px(1) + ripple, y, 1, 0, 0, 1))
     for x in range(right - px(10), left + px(9), -1):
         design_x = x / max(scale, 0.01)
-        ripple = round(sin(design_x * 0.24 - frame_index * 0.63 + 1) * px(3.0))
+        ripple = round(sin(design_x * 0.24 - cycle * 5 + 1) * px(3.0))
         path.append((x, bottom - px(1) + ripple, 0, 1, -1, 0))
     for y in range(bottom - px(10), top + px(9), -1):
         design_y = y / max(scale, 0.01)
-        ripple = round(sin(design_y * 0.2 + frame_index * 0.59 + 2) * px(2.2))
+        ripple = round(sin(design_y * 0.2 + cycle * 5 + 2) * px(2.2))
         path.append((left + px(1) + ripple, y, -1, 0, 0, -1))
     if not path:
         return
@@ -363,9 +401,10 @@ def _draw_halloween_border(
         (255, 117, 31), (255, 180, 58), (255, 226, 113),
     )
     for position, (x, y, _, _, _, _) in enumerate(path):
-        heat = (position * 3 + frame_index * 5) % 29
-        color_index = 0 if heat < 3 else 1 if heat < 7 else 2 if heat < 12 else 3 if heat < 17 else 4 if heat < 23 else 5
-        draw.point((x, y), fill=fire_colors[color_index])
+        heat = (1 + sin(position * 0.36 + cycle * 6)) / 2 * (len(fire_colors) - 1)
+        color_index = min(len(fire_colors) - 2, int(heat))
+        color = _mix_color(fire_colors[color_index], fire_colors[color_index + 1], heat - color_index)
+        draw.point((x, y), fill=color)
 
     # Flame tongues lean, stretch, and retract as embers race around the wavy edge.
     flame_step = max(4, round(6 * scale))
@@ -373,9 +412,9 @@ def _draw_halloween_border(
     stream_shift = round(frame_index * len(path) / max(1, frame_count))
     for flame_index, start in enumerate(range(0, len(path), flame_step)):
         x, y, nx, ny, tx, ty = path[(start + stream_shift) % len(path)]
-        flicker = (frame_index + flame_index * 3) % 6
-        length = (2 + flicker % 4) * step
-        lean = ((frame_index // 2 + flame_index) % 3 - 1) * step
+        flicker = (1 + sin(cycle * 13 + flame_index * 1.8)) / 2
+        length = (2 + round(flicker * 3)) * step
+        lean = round(sin(cycle * 8 + flame_index) * step)
         flame = (
             (x - tx * 2 * step, y - ty * 2 * step),
             (x + tx * 2 * step, y + ty * 2 * step),
@@ -383,13 +422,13 @@ def _draw_halloween_border(
             (x + nx * length + tx * lean, y + ny * length + ty * lean),
             (x - tx * step + nx * step, y - ty * step + ny * step),
         )
-        draw.polygon(flame, fill=(237, 77, 28))
-        if flicker % 3 != 0:
+        draw.polygon(flame, fill=_mix_color((173, 43, 24), (255, 119, 36), flicker))
+        if flicker > 0.25:
             draw.line((x + nx * step, y + ny * step,
                        x + nx * max(step, length - step) + tx * lean,
                        y + ny * max(step, length - step) + ty * lean),
-                      fill=(255, 193, 72), width=step)
-        if flicker in (0, 1):
+                      fill=_mix_color((237, 130, 42), (255, 229, 99), flicker), width=step)
+        if flicker > 0.8:
             draw.point((x + nx * (length + step), y + ny * (length + step)),
                        fill=(255, 237, 166))
 
@@ -433,14 +472,16 @@ def _draw_detailed_moon(draw: ImageDraw.ImageDraw, scale: float) -> None:
     draw.arc((px(96), px(4), px(123), px(33)), 92, 255, fill=(134, 194, 224), width=px(1))
 
 
-def _draw_moon_glint(draw: ImageDraw.ImageDraw, scale: float, frame_index: int) -> None:
+def _draw_moon_glint(draw: ImageDraw.ImageDraw, scale: float, frame_index: float) -> None:
     """Send a tiny cool sparkle along the moon's bright inner crescent."""
     px = lambda value: round(value * scale)
-    glints = ((97, 8), (95, 12), (94, 17), (95, 22), (98, 27))
-    x, y = glints[(frame_index // 2) % len(glints)]
-    color = (151, 255, 244) if (frame_index // 2) % 3 else (255, 245, 183)
+    phase = 2 * pi * frame_index / 26
+    position = (1 + sin(phase)) / 2
+    x, y = round(94 + abs(2 * position - 1) * 3), round(8 + position * 19)
+    glow = (1 + cos(phase * 2)) / 2
+    color = _mix_color((255, 224, 145), (151, 255, 244), glow)
     draw.point((px(x), px(y)), fill=color)
-    if frame_index % 6 in (0, 1):
+    if glow > 0.7:
         draw.line((px(x - 1), px(y), px(x + 1), px(y)), fill=color)
         draw.line((px(x), px(y - 1), px(x), px(y + 1)), fill=color)
 
@@ -515,60 +556,108 @@ def _draw_static_sign(width: int, height: int) -> tuple[Image.Image, float]:
     return image, scale
 
 
-def build_animation_frames(width: int, height: int) -> tuple[bytes, ...]:
-    """Pre-render a brisk, low-memory farm sign loop at startup."""
+def animation_frame_count(fps: float = ANIMATION_FPS) -> int:
+    if not isfinite(fps) or fps <= 0:
+        raise ValueError("Animation FPS must be finite and positive")
+    return max(1, round(ANIMATION_LOOP_SECONDS * fps))
+
+
+def refresh_fraction(refresh_hz: float, fps: float) -> int:
+    """Use a whole number of panel refreshes for each animation frame."""
+    animation_frame_count(fps)
+    if not isfinite(refresh_hz) or refresh_hz <= 0:
+        raise ValueError("Panel refresh limit must be finite and positive")
+    fraction = round(refresh_hz / fps)
+    if not 1 <= fraction <= 255 or not isclose(refresh_hz / fraction, fps):
+        raise ValueError("Animation FPS must evenly divide the panel refresh limit")
+    return fraction
+
+
+def iter_animation_frames(width: int, height: int, fps: float = ANIMATION_FPS) -> Iterator[Image.Image]:
+    """Sample the same 6.5-second scene at the requested playback rate."""
     background, scale = _draw_static_sign(width, height)
-    frame_count = 52
-    frames = []
+    frame_count = animation_frame_count(fps)
     wordmark_face = (111, 241, 204)
     for index in range(frame_count):
+        tick = index * LOOP_TICKS / frame_count
         frame = background.copy()
-        title_bob = round(sin(2 * pi * index / 26) * 2.1 * scale)
+        title_bob = round(sin(2 * pi * tick / 26) * 2.1 * scale)
         _draw_pixel_text(frame, "POOR LOUIS", round(46 * scale) + title_bob,
-                         wordmark_face, frame_index=index, font_size=16)
+                         wordmark_face, frame_index=tick, font_size=16)
         _draw_pixel_text(frame, "FARMS", round(70 * scale) + title_bob,
-                         wordmark_face, frame_index=index, font_size=16)
+                         wordmark_face, frame_index=tick, font_size=16)
         draw = ImageDraw.Draw(frame)
-        _draw_pumpkin_vines(draw, width, height, scale, index)
-        _draw_twinkling_stars(draw, scale, index)
-        _draw_moon_glint(draw, scale, index)
-        witch_phase = index / (frame_count - 1)
+        _draw_pumpkin_vines(draw, width, height, scale, tick)
+        _draw_twinkling_stars(draw, scale, tick)
+        _draw_moon_glint(draw, scale, tick)
+        witch_phase = index / frame_count
         witch_x = round((-34 + (width / max(scale, 0.01) + 68) * witch_phase) * scale)
-        witch_y = round((8 + sin(index * 2 * pi / 13) * 2.8) * scale)
-        _draw_witch_broom(frame, witch_x, witch_y, scale, index)
-        _draw_halloween_border(draw, scale, index, frame_count)
-        frames.append(frame.tobytes())
-    return tuple(frames)
+        witch_y = round((8 + sin(tick * 2 * pi / 13) * 2.8) * scale)
+        _draw_witch_broom(frame, witch_x, witch_y, scale, tick)
+        _draw_halloween_border(draw, scale, tick, LOOP_TICKS)
+        yield frame
 
 
-def draw_to_canvas(canvas: object, current: bytes, previous: bytes, width: int, height: int) -> None:
-    """Write only changed RGB pixels, skipping the untouched static rows."""
-    previous_view = memoryview(previous)
-    row_bytes = width * 3
-    for y in range(height):
-        offset = y * row_bytes
-        if current[offset:offset + row_bytes] == previous_view[offset:offset + row_bytes]:
-            continue
-        pixel_offset = offset
-        for x in range(width):
-            if (
-                current[pixel_offset] != previous_view[pixel_offset]
-                or current[pixel_offset + 1] != previous_view[pixel_offset + 1]
-                or current[pixel_offset + 2] != previous_view[pixel_offset + 2]
-            ):
-                canvas.SetPixel(
-                    x,
-                    y,
-                    current[pixel_offset],
-                    current[pixel_offset + 1],
-                    current[pixel_offset + 2],
-                )
-            pixel_offset += 3
+def build_animation_frames(width: int, height: int, fps: float = ANIMATION_FPS) -> tuple[bytes, ...]:
+    """Return RGB frames for previews; hardware playback uses the image iterator."""
+    return tuple(image.tobytes() for image in iter_animation_frames(width, height, fps))
+
+
+def cache_animation_canvases(
+    matrix: object,
+    images: Iterable[Image.Image],
+    should_continue: Callable[[], bool],
+) -> tuple[object, ...]:
+    """Compile one frame at a time, then retain only native panel buffers."""
+    canvases = []
+    for image in images:
+        if not should_continue():
+            break
+        canvas = matrix.CreateFrameCanvas()
+        # One-time safe uploads avoid depending on Pillow's private memory layout.
+        canvas.SetImage(image, unsafe=False)
+        canvases.append(canvas)
+        if len(canvases) == 1:
+            matrix.SwapOnVSync(canvas)
+    return tuple(canvases)
+
+
+def play_cached_animation(
+    matrix: object,
+    canvases: tuple[object, ...],
+    fps: float,
+    refresh_hz: float,
+    should_continue: Callable[[], bool],
+) -> None:
+    """Playback only swaps immutable buffers, paced entirely by panel VSync."""
+    fraction = refresh_fraction(refresh_hz, fps)
+    if not canvases:
+        raise ValueError("Native animation cache is empty")
+    frame_index = 0
+    count = 0
+    report_frames = max(1, round(fps * 10))
+    started, cpu_started = time.monotonic(), time.thread_time()
+    while should_continue():
+        matrix.SwapOnVSync(canvases[frame_index], fraction)
+        frame_index = (frame_index + 1) % len(canvases)
+        count += 1
+        if count >= report_frames:
+            now, cpu_now = time.monotonic(), time.thread_time()
+            elapsed = now - started
+            print(
+                f"Playback: actual_fps={count / elapsed:.2f}, "
+                f"animation_thread_cpu_percent={(cpu_now - cpu_started) / elapsed * 100:.2f}",
+                flush=True,
+            )
+            started, cpu_started = now, cpu_now
+            count = 0
+            report_frames = max(1, round(fps * 60))
 
 
 def main() -> None:
     from rgbmatrix import RGBMatrix, RGBMatrixOptions
 
+    fraction = refresh_fraction(MATRIX_REFRESH_LIMIT_HZ, ANIMATION_FPS)
     options = RGBMatrixOptions()
     options.rows = MATRIX_HEIGHT
     options.cols = MATRIX_WIDTH
@@ -593,7 +682,13 @@ def main() -> None:
     signal.signal(signal.SIGINT, stop)
 
     try:
-        frames = build_animation_frames(matrix.width, matrix.height)
+        started = time.monotonic()
+        print(f"Building native animation cache: fps={ANIMATION_FPS}, frames={animation_frame_count()}", flush=True)
+        canvases = cache_animation_canvases(
+            matrix, iter_animation_frames(matrix.width, matrix.height), lambda: running
+        )
+        if not running:
+            return
         print(
             f"RGB matrix canvas: {matrix.width}x{matrix.height} "
             f"(chain={CHAIN_LENGTH}, mapper={PIXEL_MAPPER_CONFIG}, "
@@ -601,23 +696,13 @@ def main() -> None:
             f"max_refresh_hz={MATRIX_REFRESH_LIMIT_HZ}, "
             f"busy_waiting={not DISABLE_BUSY_WAITING}, "
             f"animation_fps={ANIMATION_FPS}, "
-            f"pre_rendered_frames={len(frames)})",
+            f"pre_rendered_frames={len(canvases)}, "
+            f"vsync_fraction={fraction}, "
+            f"cache_build_seconds={time.monotonic() - started:.2f}, "
+            f"peak_rss_mib={resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024:.1f})",
             flush=True,
         )
-        canvas = matrix.CreateFrameCanvas()
-        blank = bytes(matrix.width * matrix.height * 3)
-        front_frame = blank
-        back_frame = blank
-        frame_index = 0
-        frame_interval = 1 / ANIMATION_FPS
-
-        while running:
-            current = frames[frame_index]
-            draw_to_canvas(canvas, current, back_frame, matrix.width, matrix.height)
-            canvas = matrix.SwapOnVSync(canvas)
-            back_frame, front_frame = front_frame, current
-            frame_index = (frame_index + 1) % len(frames)
-            time.sleep(frame_interval)
+        play_cached_animation(matrix, canvases, ANIMATION_FPS, MATRIX_REFRESH_LIMIT_HZ, lambda: running)
     finally:
         matrix.Clear()
 

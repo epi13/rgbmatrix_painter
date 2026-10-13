@@ -16,7 +16,8 @@ PWM_BITS = 4
 PWM_DITHER_BITS = 0
 MATRIX_REFRESH_LIMIT_HZ = 120
 DISABLE_BUSY_WAITING = False
-ANIMATION_FPS = 8.0
+# Native cached frames swap on every fourth 120Hz panel refresh.
+ANIMATION_FPS = 30.0
 
 # App defaults
 DEFAULT_GAMMA = 2.2
