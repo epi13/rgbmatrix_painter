@@ -45,6 +45,12 @@ STAR_POSITIONS = (
     (3, 12), (24, 15), (46, 9), (68, 16), (77, 20), (120, 13),
     (3, 46), (125, 45), (3, 56), (125, 62), (4, 88), (123, 77),
     (26, 112), (59, 109), (86, 115), (121, 110),
+    (17, 34), (30, 42), (48, 39), (66, 42), (78, 40), (106, 40),
+    (17, 47), (35, 52), (56, 50), (79, 54), (99, 52), (113, 47),
+    (28, 58), (51, 62), (72, 59), (95, 61), (17, 72), (34, 73),
+    (58, 76), (78, 72), (102, 76), (114, 69), (29, 84), (51, 85),
+    (76, 87), (101, 85), (116, 95), (15, 98), (52, 104), (68, 106),
+    (90, 108), (120, 115),
 )
 
 
@@ -156,6 +162,19 @@ def _draw_witch_broom(image: Image.Image, x: int, y: int, scale: float, frame_in
     draw.line((point(7, 14), point(31, 8 + broom_tilt)), fill=(255, 164, 70), width=unit)
     draw.line((point(7, 13), point(8, 15)), fill=(255, 226, 130), width=unit)
 
+    # A tiny black cat perches behind the witch on the broom's trailing end.
+    cat_outline = (141, 123, 201)
+    cat_points = ((1, 10), (2, 8), (4, 7), (5, 4), (7, 6), (9, 6),
+                  (11, 4), (12, 7), (14, 8), (15, 10), (13, 12),
+                  (5, 12), (3, 11))
+    draw.polygon(tuple(point(*p) for p in cat_points), fill=(4, 4, 14), outline=cat_outline)
+    tail_lift = int(frame_index // 3) % 2
+    draw.line((point(2, 10), point(0, 9), point(0, 7 - tail_lift), point(2, 6 - tail_lift)),
+              fill=(181, 153, 231), width=unit)
+    draw.point(point(7, 8), fill=(255, 211, 121))
+    draw.point(point(10, 8), fill=(136, 250, 228))
+    draw.line((point(6, 10), point(11, 10)), fill=(58, 53, 83), width=unit)
+
     # Boots and legs hang behind a cape whose trailing edge flaps rapidly.
     draw.line((point(17, 11), point(14, 14), point(12, 16)), fill=(255, 178, 99), width=unit * 2)
     draw.line((point(19, 11), point(18, 14), point(16, 16)), fill=(255, 178, 99), width=unit * 2)
@@ -235,139 +254,6 @@ def _draw_twinkling_stars(draw: ImageDraw.ImageDraw, scale: float, frame_index: 
                 draw.point((x + 2, y + 2), fill=satellite)
 
 
-def _draw_pumpkin_vines(
-    draw: ImageDraw.ImageDraw, width: int, height: int, scale: float, frame_index: float
-) -> None:
-    """Draw detailed, animated jack-o'-lanterns among curling, layered vines."""
-    px = lambda value: max(1, round(value * scale))
-    def p(x: float, y: float) -> tuple[int, int]:
-        return px(x), px(y)
-
-    loop_phase = 2 * pi * frame_index / 26
-    main_vine = []
-    back_vine = []
-    for x in range(0, width + px(2), px(2)):
-        design_x = x / max(scale, 0.01)
-        wave = sin(design_x * 0.15 + loop_phase)
-        main_vine.append((x, px(103) + round(wave * px(2))))
-        back_vine.append((x, px(100) + round(sin(design_x * 0.11 - loop_phase * 2) * px(1.5))))
-    draw.line(back_vine, fill=(48, 74, 71), width=px(2))
-    draw.line([(x, y - px(1)) for x, y in back_vine], fill=(87, 117, 90), width=px(1))
-    draw.line(main_vine, fill=(54, 91, 49), width=px(3))
-    draw.line([(x, y - px(1)) for x, y in main_vine], fill=(122, 159, 69), width=px(1))
-
-    # Leaves, veins, tiny buds and corkscrew tendrils sway at different rates.
-    leaf_palette = ((78, 127, 54), (105, 145, 57), (68, 112, 69), (147, 151, 62))
-    leaf_positions = (9, 17, 28, 39, 47, 68, 78, 89, 101, 112, 122)
-    for leaf_index, leaf_x in enumerate(leaf_positions):
-        phase = loop_phase * (2 if leaf_index % 3 == 0 else 1) + leaf_index * 1.8
-        sway_x = round(sin(phase) * px(2))
-        anchor_y = px(101) + round(sin(leaf_x * 0.15 + loop_phase) * px(2))
-        direction = -1 if leaf_index % 2 == 0 else 1
-        tip = (px(leaf_x) + sway_x, anchor_y - px(5) * direction)
-        mid_left = (px(leaf_x) - px(4) + sway_x, anchor_y - px(4) * direction)
-        mid_right = (px(leaf_x) + px(4) + sway_x, anchor_y - px(3) * direction)
-        leaf_light = 0.85 + 0.3 * (1 + sin(loop_phase * 2 + leaf_index * 0.8)) / 2
-        leaf_color = _shade_color(leaf_palette[leaf_index % len(leaf_palette)], leaf_light)
-        base = (px(leaf_x), anchor_y)
-        draw.polygon((base, mid_left, tip, mid_right), fill=leaf_color, outline=(174, 183, 92))
-        draw.line((base, tip), fill=(190, 190, 96), width=px(1))
-        draw.line((mid_left, p(leaf_x - 1, (anchor_y / max(scale, 0.01)) - direction * 2)),
-                  fill=(136, 166, 75), width=px(1))
-        draw.line((mid_right, p(leaf_x + 1, (anchor_y / max(scale, 0.01)) - direction * 2)),
-                  fill=(136, 166, 75), width=px(1))
-
-        curl = round(sin(phase + 1.2) * px(2))
-        base = (px(leaf_x), anchor_y)
-        curl_points = (base, (px(leaf_x + 2) + curl, anchor_y - px(2)),
-                       (px(leaf_x + 5) + curl, anchor_y - px(2)),
-                       (px(leaf_x + 5) + curl, anchor_y - px(4)),
-                       (px(leaf_x + 3) + curl, anchor_y - px(4)))
-        draw.line(curl_points, fill=(170, 187, 89), width=px(1))
-        if leaf_index % 3 == 0:
-            bud_x, bud_y = px(leaf_x + 7) + curl, anchor_y - px(2)
-            draw.rectangle((bud_x, bud_y, bud_x + px(1), bud_y + px(1)), fill=(231, 157, 76))
-
-    palettes = (
-        ((184, 58, 30), (224, 83, 31), (252, 126, 40), (255, 174, 63)),
-        ((171, 65, 28), (228, 102, 28), (255, 151, 42), (255, 195, 81)),
-        ((164, 49, 36), (218, 76, 34), (247, 121, 47), (255, 177, 78)),
-    )
-    pumpkin_xs = (px(4), px(50), px(96))
-    for pumpkin_index, x in enumerate(pumpkin_xs):
-        phase = loop_phase + pumpkin_index * 1.6
-        bob = round(sin(phase) * px(1.8))
-        y = px(109) + bob
-        firelight = (1 + sin(loop_phase * 2 + pumpkin_index * 2)) / 2
-        outline, body, lit, highlight = (
-            _shade_color(color, 0.85 + 0.2 * firelight) for color in palettes[pumpkin_index]
-        )
-        # Deep silhouette, rounded lobes, bright center, and dark rib grooves.
-        silhouette = (
-            (x + px(7), y), (x + px(19), y), (x + px(22), y + px(2)),
-            (x + px(25), y + px(3)), (x + px(27), y + px(6)),
-            (x + px(27), y + px(12)), (x + px(24), y + px(16)),
-            (x + px(20), y + px(19)), (x + px(7), y + px(19)),
-            (x + px(3), y + px(17)), (x, y + px(13)), (x, y + px(7)),
-            (x + px(3), y + px(3)), (x + px(6), y + px(2)),
-        )
-        draw.polygon(silhouette, fill=body, outline=(255, 177, 91))
-        draw.polygon(
-            ((x + px(4), y + px(5)), (x + px(9), y + px(2)),
-             (x + px(11), y + px(4)), (x + px(9), y + px(15)), (x + px(5), y + px(16))),
-            fill=lit,
-        )
-        draw.polygon(
-            ((x + px(11), y + px(3)), (x + px(17), y + px(3)),
-             (x + px(19), y + px(16)), (x + px(16), y + px(18)),
-             (x + px(12), y + px(16))),
-            fill=highlight,
-        )
-        for groove_x in (px(5), px(10), px(18), px(23)):
-            draw.line((x + groove_x, y + px(6), x + groove_x - px(1), y + px(13)),
-                      fill=outline, width=px(1))
-        draw.point((x + px(7), y + px(4)), fill=(255, 210, 117))
-        draw.point((x + px(20), y + px(16)), fill=(194, 70, 29))
-        stem_sway = round(sin(loop_phase * 2 + pumpkin_index) * px(1))
-        draw.polygon(
-            ((x + px(11), y + px(2)), (x + px(12) + stem_sway, y - px(3)),
-             (x + px(16) + stem_sway, y - px(3)), (x + px(18), y + px(2))),
-            fill=(84, 119, 53), outline=(163, 181, 91),
-        )
-        draw.line((x + px(14) + stem_sway, y - px(2), x + px(15) + stem_sway, y),
-                  fill=(195, 187, 92), width=px(1))
-
-        # Carved faces morph from a straight baseline mouth into a broad smile, then reset.
-        smile_phase = ((frame_index + pumpkin_index * 7) % 26) / 26
-        smile = (1 - cos(2 * pi * smile_phase)) / 2
-        smile_depth = round(smile * 4)
-        cutout = (17, 9, 10)
-        blink = (frame_index + pumpkin_index * 13) % 26 < 3
-        if blink:
-            draw.line((x + px(6), y + px(7), x + px(10), y + px(7)), fill=cutout, width=px(2))
-            draw.line((x + px(17), y + px(7), x + px(21), y + px(7)), fill=cutout, width=px(2))
-        else:
-            draw.polygon(((x + px(5), y + px(8)), (x + px(8), y + px(5)),
-                          (x + px(11), y + px(8)), (x + px(10), y + px(10))), fill=cutout)
-            draw.polygon(((x + px(16), y + px(8)), (x + px(19), y + px(5)),
-                          (x + px(22), y + px(8)), (x + px(17), y + px(10))), fill=cutout)
-        draw.polygon(((x + px(12), y + px(10)), (x + px(14), y + px(10)),
-                      (x + px(13), y + px(12))), fill=cutout)
-        mouth_left, mouth_right = x + px(7), x + px(21)
-        mouth_top = y + px(12)
-        if smile_depth == 0:
-            draw.line((mouth_left, mouth_top, mouth_right, mouth_top), fill=cutout, width=px(2))
-        else:
-            mouth = (
-                (mouth_left, mouth_top), (mouth_right, mouth_top),
-                (x + px(19), mouth_top + px(2 + smile_depth // 2)),
-                (x + px(15), mouth_top + px(2 + smile_depth)),
-                (x + px(11), mouth_top + px(2 + smile_depth)),
-                (x + px(8), mouth_top + px(2 + smile_depth // 2)),
-            )
-            draw.polygon(mouth, fill=cutout)
-
-
 def _draw_detailed_moon(draw: ImageDraw.ImageDraw, scale: float) -> None:
     """Paint a layered crescent with a colored halo, craters, and lit rim."""
     px = lambda value: round(value * scale)
@@ -400,56 +286,9 @@ def _draw_moon_glint(draw: ImageDraw.ImageDraw, scale: float, frame_index: float
         draw.line((px(x), px(y - 1), px(x), px(y + 1)), fill=color)
 
 
-def _draw_title_aurora(image: Image.Image, scale: float, frame_index: float) -> None:
-    """Drift soft spectral color behind the wordmark without boxing it in."""
-    px = lambda value: round(value * scale)
-    phase = 2 * pi * frame_index / LOOP_TICKS
-    haze = Image.new("RGBA", image.size, (0, 0, 0, 0))
-    draw = ImageDraw.Draw(haze)
-
-    # Separate translucent clouds dissolve into the black sky after blurring.
-    clouds = (
-        ((11, 107, 91, 68), 27, 58, 42, 22, 0.0),
-        ((46, 49, 113, 59), 66, 65, 48, 23, 2.2),
-        ((23, 103, 135, 55), 104, 55, 43, 25, 4.1),
-        ((140, 55, 44, 35), 12, 78, 34, 19, 5.3),
-    )
-    for color, center_x, center_y, radius_x, radius_y, offset in clouds:
-        drift_x = sin(phase + offset) * 5
-        drift_y = cos(phase * 1.4 + offset) * 2
-        box = (
-            px(center_x + drift_x - radius_x), px(center_y + drift_y - radius_y),
-            px(center_x + drift_x + radius_x), px(center_y + drift_y + radius_y),
-        )
-        draw.ellipse(box, fill=color)
-
-    haze = haze.filter(ImageFilter.GaussianBlur(radius=max(1, px(8))))
-    image.paste(haze, (0, 0), haze.getchannel("A"))
-
-
 def _draw_static_sign(width: int, height: int) -> tuple[Image.Image, float]:
-    sky = (0, 0, 0)
-    image = Image.new("RGB", (width, height), sky)
-    draw = ImageDraw.Draw(image)
+    image = Image.new("RGB", (width, height), (0, 0, 0))
     scale = min(width / 128, height / 128)
-    px = lambda value: max(1, round(value * scale))
-
-    _draw_detailed_moon(draw, scale)
-
-    # Jagged farm silhouettes frame a clear night sky above the sign.
-    draw.polygon(
-        ((0, px(33)), (px(16), px(28)), (px(36), px(34)), (px(55), px(27)),
-         (px(78), px(34)), (px(101), px(27)), (width, px(34)), (width, px(42)),
-         (0, px(42))), fill=(43, 57, 78),
-    )
-    # A restrained cool ridge light separates the farm skyline from the sky.
-    draw.line(((0, px(33)), (px(16), px(28)), (px(36), px(34)),
-               (px(55), px(27)), (px(78), px(34)), (px(101), px(27)),
-               (width, px(34))), fill=(75, 93, 126), width=px(1))
-    draw.rectangle((0, px(96), width, height), fill=(16, 30, 37))
-    draw.polygon(((0, px(112)), (px(42), px(107)), (px(88), px(112)),
-                  (width, px(106)), (width, height), (0, height)), fill=(23, 45, 39))
-
     return image, scale
 
 
@@ -478,17 +317,15 @@ def iter_animation_frames(width: int, height: int, fps: float = ANIMATION_FPS) -
     for index in range(frame_count):
         tick = index * LOOP_TICKS / frame_count
         frame = background.copy()
-        _draw_title_aurora(frame, scale, tick)
         draw = ImageDraw.Draw(frame)
         _draw_twinkling_stars(draw, scale, tick)
+        _draw_detailed_moon(draw, scale)
+        _draw_moon_glint(draw, scale, tick)
         title_bob = round(sin(2 * pi * tick / 26) * 2.1 * scale)
         _draw_pixel_text(frame, "POOR LOUIS", round(46 * scale) + title_bob,
                          wordmark_face, frame_index=tick, font_size=16)
         _draw_pixel_text(frame, "FARMS", round(70 * scale) + title_bob,
                          wordmark_face, frame_index=tick, font_size=16)
-        draw = ImageDraw.Draw(frame)
-        _draw_pumpkin_vines(draw, width, height, scale, tick)
-        _draw_moon_glint(draw, scale, tick)
         witch_phase = index / frame_count
         witch_x = round((-34 + (width / max(scale, 0.01) + 68) * witch_phase) * scale)
         witch_y = round((8 + sin(tick * 2 * pi / 13) * 2.8) * scale)
