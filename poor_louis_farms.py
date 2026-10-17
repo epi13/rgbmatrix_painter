@@ -368,92 +368,6 @@ def _draw_pumpkin_vines(
             draw.polygon(mouth, fill=cutout)
 
 
-def _draw_halloween_border(
-    draw: ImageDraw.ImageDraw, scale: float, frame_index: float, frame_count: float
-) -> None:
-    px = lambda value: round(value * scale)
-    left, top, right, bottom = px(2), px(34), px(125), px(95)
-    cycle = 2 * pi * frame_index / frame_count
-    # Each side ripples independently; corner gaps are filled by pixel pumpkins.
-    path: list[tuple[int, int, int, int, int, int]] = []
-    for x in range(left + px(10), right - px(9)):
-        design_x = x / max(scale, 0.01)
-        ripple = round(sin(design_x * 0.25 + cycle * 5) * px(3.0))
-        path.append((x, top + px(1) + ripple, 0, -1, 1, 0))
-    for y in range(top + px(10), bottom - px(9)):
-        design_y = y / max(scale, 0.01)
-        ripple = round(sin(design_y * 0.22 - cycle * 5) * px(2.2))
-        path.append((right - px(1) + ripple, y, 1, 0, 0, 1))
-    for x in range(right - px(10), left + px(9), -1):
-        design_x = x / max(scale, 0.01)
-        ripple = round(sin(design_x * 0.24 - cycle * 5 + 1) * px(3.0))
-        path.append((x, bottom - px(1) + ripple, 0, 1, -1, 0))
-    for y in range(bottom - px(10), top + px(9), -1):
-        design_y = y / max(scale, 0.01)
-        ripple = round(sin(design_y * 0.2 + cycle * 5 + 2) * px(2.2))
-        path.append((left + px(1) + ripple, y, -1, 0, 0, -1))
-    if not path:
-        return
-
-    # The moving fire edge is organic, with no continuous straight rail beneath it.
-    fire_colors = (
-        (105, 34, 45), (168, 47, 31), (221, 67, 27),
-        (255, 117, 31), (255, 180, 58), (255, 226, 113),
-    )
-    for position, (x, y, _, _, _, _) in enumerate(path):
-        heat = (1 + sin(position * 0.36 + cycle * 6)) / 2 * (len(fire_colors) - 1)
-        color_index = min(len(fire_colors) - 2, int(heat))
-        color = _mix_color(fire_colors[color_index], fire_colors[color_index + 1], heat - color_index)
-        draw.point((x, y), fill=color)
-
-    # Flame tongues lean, stretch, and retract as embers race around the wavy edge.
-    flame_step = max(4, round(6 * scale))
-    step = max(1, round(scale))
-    stream_shift = round(frame_index * len(path) / max(1, frame_count))
-    for flame_index, start in enumerate(range(0, len(path), flame_step)):
-        x, y, nx, ny, tx, ty = path[(start + stream_shift) % len(path)]
-        flicker = (1 + sin(cycle * 13 + flame_index * 1.8)) / 2
-        length = (2 + round(flicker * 3)) * step
-        lean = round(sin(cycle * 8 + flame_index) * step)
-        flame = (
-            (x - tx * 2 * step, y - ty * 2 * step),
-            (x + tx * 2 * step, y + ty * 2 * step),
-            (x + tx * step + nx * step, y + ty * step + ny * step),
-            (x + nx * length + tx * lean, y + ny * length + ty * lean),
-            (x - tx * step + nx * step, y - ty * step + ny * step),
-        )
-        draw.polygon(flame, fill=_mix_color((173, 43, 24), (255, 119, 36), flicker))
-        if flicker > 0.25:
-            draw.line((x + nx * step, y + ny * step,
-                       x + nx * max(step, length - step) + tx * lean,
-                       y + ny * max(step, length - step) + ty * lean),
-                      fill=_mix_color((237, 130, 42), (255, 229, 99), flicker), width=step)
-        if flicker > 0.8:
-            draw.point((x + nx * (length + step), y + ny * (length + step)),
-                       fill=(255, 237, 166))
-
-    # Rounded pixel pumpkins occupy the corners; their carved features stay black.
-    corners = ((4, 36), (116, 36), (4, 86), (116, 86))
-    pumpkin_shape = ((2, 0), (5, 0), (7, 2), (8, 4), (7, 7), (5, 8),
-                     (2, 8), (0, 6), (0, 3), (1, 1))
-    for pumpkin_index, (design_x, design_y) in enumerate(corners):
-        x = px(design_x)
-        y = px(design_y + round(sin(frame_index * 2 * pi / 13 + pumpkin_index) * 0.6))
-        points = tuple((x + px(dx), y + px(dy)) for dx, dy in pumpkin_shape)
-        draw.polygon(points, fill=(226, 83, 31), outline=(255, 172, 70))
-        draw.line((x + px(3), y + px(1), x + px(4), y - px(1)),
-                  fill=(116, 153, 67), width=px(1))
-        blink = (frame_index // 2 + pumpkin_index * 4) % 13 < 2
-        cutout = (18, 8, 9)
-        if blink:
-            draw.line((x + px(2), y + px(4), x + px(3), y + px(4)), fill=cutout)
-            draw.line((x + px(5), y + px(4), x + px(6), y + px(4)), fill=cutout)
-        else:
-            draw.point((x + px(2), y + px(3)), fill=cutout)
-            draw.point((x + px(6), y + px(3)), fill=cutout)
-        draw.line((x + px(2), y + px(6), x + px(6), y + px(6)), fill=cutout, width=px(1))
-
-
 def _draw_detailed_moon(draw: ImageDraw.ImageDraw, scale: float) -> None:
     """Paint a layered crescent with a colored halo, craters, and lit rim."""
     px = lambda value: round(value * scale)
@@ -486,35 +400,31 @@ def _draw_moon_glint(draw: ImageDraw.ImageDraw, scale: float, frame_index: float
         draw.line((px(x), px(y - 1), px(x), px(y + 1)), fill=color)
 
 
-def _draw_wavy_panel(
-    draw: ImageDraw.ImageDraw,
-    bounds: tuple[int, int, int, int],
-    color: tuple[int, int, int],
-    scale: float,
-    phase: float,
-) -> None:
-    """Fill a gently irregular pixel-board layer with no ruler-straight edges."""
-    left, top, right, bottom = bounds
-    stride = max(1, round(2 * scale))
-    points: list[tuple[int, int]] = []
+def _draw_title_aurora(image: Image.Image, scale: float, frame_index: float) -> None:
+    """Drift soft spectral color behind the wordmark without boxing it in."""
+    px = lambda value: round(value * scale)
+    phase = 2 * pi * frame_index / LOOP_TICKS
+    haze = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(haze)
 
-    def wave(position: int, offset: float) -> int:
-        design_position = position / max(scale, 0.01)
-        movement = sin(design_position * 0.27 + phase + offset)
-        movement += 0.35 * sin(design_position * 0.61 - phase * 1.4 + offset)
-        return round(movement * 1.8 * scale)
+    # Separate translucent clouds dissolve into the black sky after blurring.
+    clouds = (
+        ((11, 107, 91, 68), 27, 58, 42, 22, 0.0),
+        ((46, 49, 113, 59), 66, 65, 48, 23, 2.2),
+        ((23, 103, 135, 55), 104, 55, 43, 25, 4.1),
+        ((140, 55, 44, 35), 12, 78, 34, 19, 5.3),
+    )
+    for color, center_x, center_y, radius_x, radius_y, offset in clouds:
+        drift_x = sin(phase + offset) * 5
+        drift_y = cos(phase * 1.4 + offset) * 2
+        box = (
+            px(center_x + drift_x - radius_x), px(center_y + drift_y - radius_y),
+            px(center_x + drift_x + radius_x), px(center_y + drift_y + radius_y),
+        )
+        draw.ellipse(box, fill=color)
 
-    xs = list(range(left, right + 1, stride))
-    ys = list(range(top, bottom + 1, stride))
-    if xs[-1] != right:
-        xs.append(right)
-    if ys[-1] != bottom:
-        ys.append(bottom)
-    points.extend((x, top + wave(x, 0)) for x in xs)
-    points.extend((right + wave(y, 1.7), y) for y in ys[1:])
-    points.extend((x, bottom + wave(x, 3.1)) for x in reversed(xs[:-1]))
-    points.extend((left + wave(y, 4.8), y) for y in reversed(ys[1:-1]))
-    draw.polygon(points, fill=color)
+    haze = haze.filter(ImageFilter.GaussianBlur(radius=max(1, px(8))))
+    image.paste(haze, (0, 0), haze.getchannel("A"))
 
 
 def _draw_static_sign(width: int, height: int) -> tuple[Image.Image, float]:
@@ -539,19 +449,6 @@ def _draw_static_sign(width: int, height: int) -> tuple[Image.Image, float]:
     draw.rectangle((0, px(96), width, height), fill=(16, 30, 37))
     draw.polygon(((0, px(112)), (px(42), px(107)), (px(88), px(112)),
                   (width, px(106)), (width, height), (0, height)), fill=(23, 45, 39))
-
-    # A carved, beveled farm sign makes the matched wordmark the visual anchor.
-    left, top, right, bottom = px(3), px(35), px(124), px(94)
-    _draw_wavy_panel(draw, (left + px(3), top + px(3), right, bottom),
-                     (8, 14, 20), scale, 0.4)
-    _draw_wavy_panel(draw, (left, top, right - px(3), bottom - px(3)),
-                     (101, 60, 70), scale, 1.3)
-    _draw_wavy_panel(draw, (left + px(2), top + px(2), right - px(5), bottom - px(5)),
-                     (35, 29, 48), scale, 2.1)
-    _draw_wavy_panel(draw, (left + px(5), top + px(5), right - px(8), bottom - px(8)),
-                     (22, 48, 45), scale, 3.4)
-    draw.point((left + px(7), top + px(7)), fill=(115, 161, 100))
-    draw.point((right - px(10), bottom - px(10)), fill=(11, 27, 31))
 
     return image, scale
 
@@ -581,6 +478,9 @@ def iter_animation_frames(width: int, height: int, fps: float = ANIMATION_FPS) -
     for index in range(frame_count):
         tick = index * LOOP_TICKS / frame_count
         frame = background.copy()
+        _draw_title_aurora(frame, scale, tick)
+        draw = ImageDraw.Draw(frame)
+        _draw_twinkling_stars(draw, scale, tick)
         title_bob = round(sin(2 * pi * tick / 26) * 2.1 * scale)
         _draw_pixel_text(frame, "POOR LOUIS", round(46 * scale) + title_bob,
                          wordmark_face, frame_index=tick, font_size=16)
@@ -588,13 +488,11 @@ def iter_animation_frames(width: int, height: int, fps: float = ANIMATION_FPS) -
                          wordmark_face, frame_index=tick, font_size=16)
         draw = ImageDraw.Draw(frame)
         _draw_pumpkin_vines(draw, width, height, scale, tick)
-        _draw_twinkling_stars(draw, scale, tick)
         _draw_moon_glint(draw, scale, tick)
         witch_phase = index / frame_count
         witch_x = round((-34 + (width / max(scale, 0.01) + 68) * witch_phase) * scale)
         witch_y = round((8 + sin(tick * 2 * pi / 13) * 2.8) * scale)
         _draw_witch_broom(frame, witch_x, witch_y, scale, tick)
-        _draw_halloween_border(draw, scale, tick, LOOP_TICKS)
         yield frame
 
 
