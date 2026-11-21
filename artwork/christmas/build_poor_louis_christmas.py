@@ -5,12 +5,14 @@ from math import pi, sin
 from pathlib import Path
 from random import Random
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageChops, ImageDraw
+
+from santa_flyby import draw_flyby
 
 
 SIZE = 128
-FRAME_COUNT = 120
-DELAY_MS = 80
+FRAME_COUNT = 192
+DELAY_MS = 50
 SKY = "#070c1d"
 GLYPHS = {
     "P": ("11110", "10001", "10001", "11110", "10000", "10000", "10000"),
@@ -47,17 +49,45 @@ def title_mask(text):
     return mask
 
 
-TITLE = tuple((title_mask(line), y) for line, y in (("POOR LOUIS", 39), ("FARMS", 59)))
+def title_face(mask):
+    face = Image.new("RGB", mask.size)
+    colors = ("#fff0c7", "#edfad8", "#c6efd2", "#a7dac4", "#8cbdae")
+    tones = (0, 0, 0, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 4)
+    draw = ImageDraw.Draw(face)
+    for row, tone in enumerate(tones):
+        draw.line((0, row, mask.width - 1, row), fill=colors[tone])
+    return face
 
 
-def draw_title(image):
-    for mask, y in TITLE:
+TITLE = tuple((mask, title_face(mask), y) for mask, y in
+              ((title_mask("POOR LOUIS"), 42), (title_mask("FARMS"), 61)))
+
+
+def draw_title(image, phase):
+    for line, (mask, face, y) in enumerate(TITLE):
         x = (SIZE - mask.width) // 2
-        image.paste("#23182e", (x + 2, y + 3), mask)
-        image.paste("#754151", (x + 1, y + 2), mask)
-        image.paste("#b67a63", (x + 1, y + 1), mask)
-        image.paste("#c2e9d2", (x, y), mask)
-        image.paste("#fff0c7", (x, y), mask.crop((0, 0, mask.width, 5)))
+        image.paste("#332444", (x + 3, y + 3), mask)
+        image.paste("#915261", (x + 2, y + 2), mask)
+        image.paste("#e4ab75", (x + 1, y + 1), mask)
+        image.paste(face, (x, y), mask)
+
+        # A narrow diagonal glint crosses the bevel twice per loop.
+        sweep = (phase * 2 - line * 0.09) % 1
+        if sweep < 0.32:
+            center = round(-10 + sweep / 0.32 * (mask.width + 23))
+            shine = Image.new("L", mask.size)
+            beam = ImageDraw.Draw(shine)
+            beam.polygon(((center, 0), (center + 5, 0), (center - 2, 13), (center - 7, 13)), fill=255)
+            image.paste("#fff8dc", (x, y), ImageChops.multiply(mask, shine))
+
+    draw = ImageDraw.Draw(image)
+    for x, y, offset in ((26, 65, 0.23), (100, 67, 0.70)):
+        shimmer = (phase - offset) % 1
+        if shimmer < 0.08:
+            draw.point((x, y), fill="#e4ab75")
+            if 0.02 <= shimmer < 0.056:
+                draw.line((x - 2, y, x + 2, y), fill="#d6ae81")
+                draw.line((x, y - 2, x, y + 2), fill="#fff8dc")
 
 
 def spruce(draw, x, y, width, height, palette, snow=None):
@@ -141,6 +171,8 @@ def draw_frame(background, index):
     image = background.copy()
     draw = ImageDraw.Draw(image)
     phase = index / FRAME_COUNT
+    # Preserve the original scenery's 80 ms light and smoke beats.
+    tick = index * DELAY_MS // 80
 
     for x, y, offset in STARS:
         if 91 <= x <= 114 and 5 <= y <= 28:
@@ -165,21 +197,22 @@ def draw_frame(background, index):
                        outline="#603944")
         draw.line((x + 2, 108, x + 2, 111), fill="#a55e55")
     for offset, x in enumerate(range(14, 54, 5)):
-        lamp = (index + offset * 7) // 10 % 3
+        lamp = (tick + offset * 7) // 10 % 3
         draw.point((x, 102), fill=("#ffb276", "#a8e4cb", "#fb7668")[lamp])
     for offset, (x, y) in enumerate(TREE_LIGHTS):
         palette = ("#ffc98c", "#fa8c81", "#b6e7db")
-        lamp = (index + offset * 7) // 10 % 4
+        lamp = (tick + offset * 7) // 10 % 4
         draw.point((x, y), fill=palette[offset % 3] if lamp != 0 else "#739985")
     draw.line((97, 78, 101, 78), fill="#ffc98c")
     draw.line((99, 75, 99, 80), fill="#fff0c7")
 
     for offset in range(3):
-        rise = (index + offset * 10) % 30
+        rise = (tick + offset * 10) % 30
         if rise < 24:
             draw.point((48 + rise // 6, 80 - rise // 4), fill="#8199b5" if rise < 12 else "#415471")
-    draw.line((77, 111, 81, 112, 83, 111 + (index // 10) % 3), fill="#b05054")
-    draw_title(image)
+    draw.line((77, 111, 81, 112, 83, 111 + (tick // 10) % 3), fill="#b05054")
+    draw_flyby(draw, index * DELAY_MS / 1000)
+    draw_title(image, phase)
     return image
 
 
