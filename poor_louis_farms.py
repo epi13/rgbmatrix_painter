@@ -1,6 +1,7 @@
 """Low-load Poor Louis Farms fall sign for a HUB75 RGB matrix."""
 from __future__ import annotations
 
+import json
 import resource
 import signal
 import time
@@ -25,6 +26,7 @@ from config import (
     PWM_BITS,
     PWM_DITHER_BITS,
 )
+from matrix_animation import NATIVE_SIZE, read_gif, refresh_holds
 
 
 ANIMATION_LOOP_SECONDS = 6.5
@@ -363,21 +365,40 @@ def play_cached_animation(
     fps: float,
     refresh_hz: float,
     should_continue: Callable[[], bool],
+    *,
+    holds: tuple[int, ...] | None = None,
 ) -> None:
     """Playback only swaps immutable buffers, paced entirely by panel VSync."""
-    fraction = refresh_fraction(refresh_hz, fps)
     if not canvases:
         raise ValueError("Native animation cache is empty")
+    first_wait = 1
+    if holds is None:
+        first_wait = refresh_fraction(refresh_hz, fps)
+        holds = (first_wait,) * len(canvases)
+    if not should_continue():
+        return
+    matrix.SwapOnVSync(canvases[0], first_wait)
+    print("Matrix playback ready", flush=True)
     frame_index = 0
     count = 0
-    report_frames = max(1, round(fps * 10))
+    report_interval = 10
     started, cpu_started = time.monotonic(), time.thread_time()
     while should_continue():
-        matrix.SwapOnVSync(canvases[frame_index], fraction)
-        frame_index = (frame_index + 1) % len(canvases)
+        # The driver's Python binding takes a byte. Bound each wait to about
+        # a second so SIGTERM can interrupt even a long still frame.
+        remaining = holds[frame_index]
+        next_index = (frame_index + 1) % len(canvases)
+        while remaining > 120 and should_continue():
+            matrix.SwapOnVSync(canvases[frame_index], 120)
+            remaining -= 120
+        if not should_continue():
+            break
+        matrix.SwapOnVSync(canvases[next_index], remaining)
+        frame_index = next_index
         count += 1
-        if count >= report_frames:
-            now, cpu_now = time.monotonic(), time.thread_time()
+        now = time.monotonic()
+        if now - started >= report_interval:
+            cpu_now = time.thread_time()
             elapsed = now - started
             print(
                 f"Playback: actual_fps={count / elapsed:.2f}, "
@@ -386,12 +407,22 @@ def play_cached_animation(
             )
             started, cpu_started = now, cpu_now
             count = 0
-            report_frames = max(1, round(fps * 60))
+            report_interval = 60
 
 
 def main() -> None:
     from rgbmatrix import RGBMatrix, RGBMatrixOptions
 
+    directory = Path(__file__).resolve().parent
+    settings_file = directory / "display.json"
+    settings = json.loads(settings_file.read_text()) if settings_file.exists() else {}
+    active = settings.get("active")
+    holds = None
+    if active is not None:
+        source = directory / "animations" / f"{active}.gif"
+        images, durations = read_gif(source)
+        holds = refresh_holds(durations, MATRIX_REFRESH_LIMIT_HZ)
+    brightness = settings.get("brightness", PANEL_BRIGHTNESS)
     fraction = refresh_fraction(MATRIX_REFRESH_LIMIT_HZ, ANIMATION_FPS)
     options = RGBMatrixOptions()
     options.rows = MATRIX_HEIGHT
@@ -400,7 +431,7 @@ def main() -> None:
     options.parallel = PARALLEL
     options.pixel_mapper_config = PIXEL_MAPPER_CONFIG
     options.gpio_slowdown = GPIO_SLOWDOWN
-    options.brightness = PANEL_BRIGHTNESS
+    options.brightness = brightness
     options.pwm_bits = PWM_BITS
     options.pwm_dither_bits = PWM_DITHER_BITS
     options.limit_refresh_rate_hz = MATRIX_REFRESH_LIMIT_HZ
@@ -418,10 +449,21 @@ def main() -> None:
 
     try:
         started = time.monotonic()
-        print(f"Building native animation cache: fps={ANIMATION_FPS}, frames={animation_frame_count()}", flush=True)
-        canvases = cache_animation_canvases(
-            matrix, iter_animation_frames(matrix.width, matrix.height), lambda: running
+        if (matrix.width, matrix.height) != NATIVE_SIZE:
+            raise ValueError(f"Expected a 128×128 mapped canvas, got {matrix.width}×{matrix.height}")
+        frame_count = len(holds) if holds is not None else animation_frame_count()
+        print(
+            f"Building native animation cache: source={active or 'halloween'}, "
+            f"frames={frame_count}, brightness={brightness}",
+            flush=True,
         )
+        canvases = cache_animation_canvases(
+            matrix,
+            images if holds is not None else iter_animation_frames(matrix.width, matrix.height),
+            lambda: running,
+        )
+        if holds is not None:
+            del images
         if not running:
             return
         print(
@@ -430,14 +472,15 @@ def main() -> None:
             f"pwm_bits={PWM_BITS}, pwm_dither_bits={PWM_DITHER_BITS}, "
             f"max_refresh_hz={MATRIX_REFRESH_LIMIT_HZ}, "
             f"busy_waiting={not DISABLE_BUSY_WAITING}, "
-            f"animation_fps={ANIMATION_FPS}, "
             f"pre_rendered_frames={len(canvases)}, "
-            f"vsync_fraction={fraction}, "
+            f"loop_refreshes={sum(holds) if holds is not None else fraction * len(canvases)}, "
             f"cache_build_seconds={time.monotonic() - started:.2f}, "
             f"peak_rss_mib={resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024:.1f})",
             flush=True,
         )
-        play_cached_animation(matrix, canvases, ANIMATION_FPS, MATRIX_REFRESH_LIMIT_HZ, lambda: running)
+        play_cached_animation(
+            matrix, canvases, ANIMATION_FPS, MATRIX_REFRESH_LIMIT_HZ, lambda: running, holds=holds,
+        )
     finally:
         matrix.Clear()
 

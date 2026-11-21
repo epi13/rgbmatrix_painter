@@ -4,6 +4,10 @@ The existing web editor works on a computer on the local network. A standalone R
 
 ## Animated farm sign
 
+For an existing Pi, use the [LED matrix workflow](docs/led-matrix-workflow.md)
+to validate and deploy native 128×128 seasonal GIFs and return to Halloween.
+The setup scripts below are for fresh installations.
+
 The sign features a bold, pixelated Poor Louis Farms wordmark with a bright mint face, dark outline, and orange-to-violet block extrusion on both lines. The text bobs and catches a feathered traveling shine as its beveled edges reflect changing light. It stands against a pure-black sky dotted with colorful twinkling stars and a detailed crescent moon. A witch flies past on a tilting broom with a fluttering cape and fading sparkle trail; a tiny black cat with a violet outline and bright eyes rides behind her. The wordmark stays in the foreground, clear of the stars.
 
 The 6.5-second loop runs at 30 frames per second with 195 distinct rendered frames. Scene motion uses elapsed animation time so changing `ANIMATION_FPS` adds samples without speeding everything up. Glyph masks and outlines are cached during rendering. At startup, frames are rendered and uploaded one at a time into native matrix canvases; temporary RGB images are then discarded. The first frame displays while the rest of the cache loads. Playback reuses these immutable native buffers and only switches pointers at VSync, with no Python pixel scans, drawing, RGB conversion, or sleep delays on each frame. The extra native buffers trade some RAM for much lower playback CPU use.
