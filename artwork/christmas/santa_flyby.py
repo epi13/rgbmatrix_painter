@@ -54,7 +54,7 @@ def flight_pose(seconds):
 
 def draw_reindeer(draw, x, y, stride, leader, glow, moon_x):
     # Keep the coat quieter than Rudolph's nose on the LED panels.
-    lit_fur = "#ba9980" if abs(x + 12 - moon_x) < 19 else "#aa826e"
+    lit_fur = "#b18e75" if abs(x + 12 - moon_x) < 19 else "#aa826e"
     # Separate the legs by depth, with darker far legs.
     for hip, poses in ((5, HIND_LEGS), (11, FRONT_LEGS)):
         for far in (True, False):
@@ -70,7 +70,7 @@ def draw_reindeer(draw, x, y, stride, leader, glow, moon_x):
     draw.polygon(pixels(x, y, DEER_BODY), fill="#70475a", outline="#aa826e")
     draw.polygon(pixels(x, y, ((3, 9), (5, 8), (10, 8), (12, 6), (15, 5),
                                (17, 7), (14, 7), (11, 10), (8, 11), (4, 11))),
-                 fill="#946f5e")
+                 fill="#906b59")
     draw.line(pixels(x, y, ((4, 9), (6, 8), (10, 8), (12, 6))), fill=lit_fur)
     draw.line(pixels(x, y, ((4, 12), (9, 12), (11, 11))), fill="#87646e")
     draw.line(pixels(x, y, ((13, 5), (15, 5), (17, 7))), fill=lit_fur)

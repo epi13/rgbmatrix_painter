@@ -3,7 +3,7 @@ from math import pi, sin
 
 from PIL import Image, ImageDraw
 
-from santa_flyby import HO_PIXELS, SANTA_HAND, flight_pose
+from santa_flyby import SANTA_HAND, flight_pose
 from winter_delivery import draw_falling_present, draw_wrapped_present
 from winter_scenery import ORNAMENT_COLORS
 
@@ -12,7 +12,9 @@ TREE_X = 66
 TREE_SPRITE = ((43, 43, 90, 111), (45, 53), (41, 58))
 WOODLAND_DROP_AT = 11.80
 WOODLAND_GIFT_COLORS = ("#568d9a", "#3d607f", "#85b7bc", "#ffedad")
-HOO_PIXELS = tuple(row + "." + row[4:] for row in HO_PIXELS)
+BERRY_STRAND = ((78, 83), (73, 86), (68, 87), (62, 87), (57, 86), (54, 84))
+OWL_PERCH = ((116, 70), (123, 76))
+GARLAND_START, GARLAND_END = 14.45, 15.75
 WOODLAND_ORNAMENTS = (
     (65, 57, 1), (67, 65, 0), (62, 71, 3), (74, 73, 2),
     (56, 80, 0), (67, 82, 1), (76, 84, 3), (55, 93, 2),
@@ -189,19 +191,6 @@ def hop_height(seconds, start, duration, height):
     return round(height * sin(pi * progress)) if 0 < progress < 1 else 0
 
 
-def draw_calf(draw, seconds):
-    # Big ears, a lighter coat and long knees read as a calf without antlers.
-    lift = hop_height(seconds, 12.7, 0.75, 2)
-    draw.line(((24, 117 - lift), (23, 123 - lift), (26, 123 - lift)), fill="#87646e")
-    draw.line(((32, 117 - lift), (33, 123 - lift), (35, 123 - lift)), fill="#87646e")
-    draw.ellipse((21, 112 - lift, 35, 120 - lift), fill="#a9755b", outline="#aa826e")
-    draw.polygon(((31, 113 - lift), (31, 109 - lift), (28, 106 - lift), (32, 106 - lift),
-                  (34, 109 - lift), (37, 106 - lift), (37, 110 - lift),
-                  (40, 112 - lift), (39, 114 - lift), (34, 115 - lift)),
-                 fill="#d6a478", outline="#aa826e")
-    draw.point((35, 110 - lift), fill="#33334a")
-
-
 def draw_leveret(draw, seconds):
     y = 123 - hop_height(seconds, 12.65, 0.9, 5) - hop_height(seconds, 14.4, 0.6, 3)
     draw.ellipse((39, y - 6, 47, y), fill="#a7bfd4", outline="#53658e")
@@ -212,53 +201,128 @@ def draw_leveret(draw, seconds):
     draw.point((39, y - 2), fill="#f7f4e1")
 
 
-def draw_fox_kit(draw, seconds):
-    tail_y = 116 + round(2 * sin(seconds * 8 + 1))
-    draw.line(((115, 120), (121, 119), (125, tail_y)), fill="#b97a6d", width=3)
-    draw.point((125, tail_y), fill="#f7f4e1")
-    draw.ellipse((110, 114, 120, 122), fill="#b46d6b")
-    draw.polygon(((106, 116), (109, 113), (109, 109), (112, 111), (115, 109),
-                  (117, 115), (114, 119), (110, 118)), fill="#d8937c")
-    draw.line(((106, 116), (110, 118), (113, 118)), fill="#f7f4e1")
-    draw.point((110, 114), fill="#33334a")
-    draw.point((106, 116), fill="#33334a")
+def draw_fox_kit(draw, x, y, seconds):
+    tail_y = y + round(sin(seconds * 8) * 2)
+    draw.line(((x + 5, y + 2), (x + 8, y + 2), (x + 10, tail_y)), fill="#b97a6d", width=2)
+    draw.point((x + 10, tail_y), fill="#f7f4e1")
+    draw.ellipse((x + 2, y - 1, x + 7, y + 4), fill="#b46d6b")
+    draw.polygon(((x, y), (x + 1, y - 2), (x + 1, y - 4), (x + 3, y - 2),
+                  (x + 5, y - 4), (x + 6, y - 1), (x + 4, y + 2)),
+                 fill="#d8937c")
+    draw.line((x, y, x + 3, y + 1), fill="#f7f4e1")
+    draw.point((x + 2, y - 1), fill="#33334a")
 
 
-def draw_owl_family(draw, seconds):
-    for x, base, width in ((107, 78, 11), (119, 79, 8)):
-        chick = width == 8
-        top = base - (9 if chick else 13)
-        draw.ellipse((x, top + 2, x + width, base), fill="#a9755b", outline="#70475a")
-        draw.line((x + 2, top + 1, x + 2, top - 1), fill="#aa826e")
-        draw.line((x + width - 2, top + 1, x + width - 2, top - 1), fill="#aa826e")
-        look_up = 11.25 < seconds < 15.1
-        blink = (seconds + (0.25 if chick else 0)) % 1.85 < 0.13
-        for eye in (x + 3, x + width - 2):
-            y = top + 4
-            if blink:
-                draw.line((eye - 1, y, eye + 1, y), fill="#514b42")
-            else:
-                draw.ellipse((eye - 1, y - 2, eye + 1, y + 1), fill="#f7f4e1")
-                draw.point((eye - int(look_up), y - int(look_up)), fill="#33334a")
-        beak_x = x + width // 2
-        draw.point((beak_x, top + 6), fill="#ffce88")
-        draw.line((beak_x - 2, base, beak_x + 2, base), fill="#d4ab79")
+def along_path(points, progress):
+    """Interpolate evenly timed waypoints and round to native screen pixels."""
+    position = max(0, min(1, progress)) * (len(points) - 1)
+    index = min(len(points) - 2, int(position))
+    weight = position - index
+    (x, y), (next_x, next_y) = points[index:index + 2]
+    return round(x + (next_x - x) * weight), round(y + (next_y - y) * weight)
 
-    # Three calls next to the branch, distinct from Santa's moving HO trail.
-    for start, x, y in ((11.85, 101, 56), (12.75, 103, 54), (13.65, 105, 55)):
-        age = seconds - start
-        if 0 <= age < 0.80:
-            ink = "#fff2c7" if age < 0.40 else "#a7bfd4" if age < 0.62 else "#53658e"
-            for dy, row in enumerate(HOO_PIXELS):
-                for dx, pixel in enumerate(row):
-                    if pixel == "#":
-                        draw.point((x + dx, y + dy - round(age * 3)), fill=ink)
+
+def draw_adult_owl(draw, x, y, seconds, flying):
+    # The original wide face, round eye disks and pointed tufts.
+    draw.ellipse((x - 6, y - 5, x + 5, y + 8), fill="#a9755b", outline="#70475a")
+    draw.ellipse((x - 3, y + 1, x + 3, y + 7), fill="#d6a478")
+    draw.polygon(((x - 7, y - 1), (x - 6, y - 8), (x - 3, y - 6),
+                  (x + 1, y - 6), (x + 4, y - 8), (x + 6, y - 1),
+                  (x + 4, y + 2), (x - 4, y + 2)), fill="#aa826e")
+    for eye in (x - 3, x + 2):
+        draw.ellipse((eye - 2, y - 5, eye + 2, y), fill="#f7f4e1")
+        if seconds % 1.85 < 0.13:
+            draw.line((eye - 1, y - 2, eye + 1, y - 2), fill="#514b42")
+        else:
+            draw.point((eye - int(flying), y - 3), fill="#33334a")
+    draw.point((x, y), fill="#ffce88")
+    if not flying:
+        draw.point((x - 2, y + 8), fill="#d4ab79")
+        draw.point((x + 2, y + 8), fill="#d4ab79")
+
+
+def draw_owlet(draw, x, y, seconds):
+    draw.ellipse((x - 4, y - 4, x + 4, y + 3), fill="#a9755b", outline="#70475a")
+    for eye in (x - 1, x + 2):
+        draw.line((eye, y - 5, eye, y - 7), fill="#aa826e")
+        if (seconds + 0.25) % 1.85 < 0.13:
+            draw.line((eye - 1, y - 2, eye + 1, y - 2), fill="#514b42")
+        else:
+            draw.ellipse((eye - 1, y - 4, eye + 1, y - 1), fill="#f7f4e1")
+            draw.point((eye, y - 2), fill="#33334a")
+    draw.point((x, y), fill="#ffce88")
+    draw.line((x - 2, y + 3, x + 2, y + 3), fill="#d4ab79")
+
+
+def draw_wings(draw, x, y, width, flap):
+    for side in (-1, 1):
+        tip = (x + side * width, y + flap)
+        draw.polygon(((x + side * 2, y + 2), tip, (tip[0] - side * 2, tip[1] + 3),
+                      (x + side * 3, y + 6)), fill="#a9755b", outline="#aa826e")
+
+
+def draw_owl_garland(draw, seconds):
+    adult, chick = OWL_PERCH
+    flying = 13.8 <= seconds < 17.0
+    progress = (seconds - GARLAND_START) / (GARLAND_END - GARLAND_START)
+    end = along_path(BERRY_STRAND, progress)
+    if flying and seconds < GARLAND_START:
+        flight = (seconds - 13.8) / (GARLAND_START - 13.8)
+        adult = along_path((adult, (98, 63), BERRY_STRAND[0]), flight)
+        chick = along_path((chick, (105, 69), (86, 79)), flight)
+        draw.line((adult, chick), fill="#d8e3a6")
+        draw.point(along_path((adult, chick), 0.45), fill="#e47783")
+    elif flying and seconds < GARLAND_END:
+        adult = end
+        chick = (end[0] + 8, end[1] - 4)
+    elif flying:
+        flight = (seconds - GARLAND_END) / (17.0 - GARLAND_END)
+        adult = along_path((BERRY_STRAND[-1], (64, 62), (89, 59), adult), flight)
+        chick = along_path(((62, 80), (73, 57), (98, 62), chick), flight)
+    if progress >= 0:
+        # The berry strand stays behind on the branches as the birds return.
+        placed = min(len(BERRY_STRAND) - 1, int(progress * (len(BERRY_STRAND) - 1)))
+        strand = (*BERRY_STRAND[:placed + 1], end)
+        draw.line(strand, fill="#d8e3a6")
+        for index, (x, y) in enumerate(strand[:-1]):
+            draw.point((x, y + 1), fill="#e47783")
+            if index % 2:
+                draw.point((x + 1, y + 1), fill="#b76272")
+    if flying:
+        draw_wings(draw, *adult, 10, round(5 * sin(seconds * 32)))
+        draw_wings(draw, *chick, 7, round(3 * sin(seconds * 32 + 1.5)))
+    draw_adult_owl(draw, *adult, seconds, flying)
+    draw_owlet(draw, *chick, seconds)
 
 
 def draw_hung_ornament(draw, x, y, color):
     draw.point((x, y - 1), fill="#d4ab79")
     draw.line((x - 1, y, x + 1, y), fill=color)
     draw.point((x, y + 1), fill=color)
+
+
+def draw_fox_family(image, seconds):
+    approach = hop_height(seconds, 13.0, 2.5, 9)
+    lift = hop_height(seconds, 13.65, 1.15, 5)
+    adult_x, adult_y = 88 - approach, 97 - lift
+    kit_x = 109 - hop_height(seconds, 12.92, 2.45, 17)
+    kit_y = 118 - hop_height(seconds, 13.20, 0.85, 3)
+    place_sprite(image, draw_fox, (88, 89, 128, 118), (adult_x, adult_y), (24, 18), seconds)
+
+    draw = ImageDraw.Draw(image)
+    draw_fox_kit(draw, kit_x, kit_y, seconds)
+    # The kit brings the ornament to the adult, who reaches the right bough.
+    handoff = (seconds - 13.42) / 0.55
+    hang = (seconds - 13.97) / 0.54
+    mouth = (adult_x, adult_y + 7)
+    branch = (80, 98)
+    if handoff < 1:
+        ornament = along_path(((kit_x - 1, kit_y), mouth), handoff)
+    else:
+        ornament = along_path((mouth, branch), hang)
+    draw_hung_ornament(draw, *ornament, "#ab8aca")
+    if 0 <= seconds - 14.51 < 0.24:
+        draw.point((branch[0] + 1, branch[1] - 2), fill="#fff2c7")
 
 
 def draw_woodland_motion(image, phase, seconds, world_x):
@@ -268,13 +332,11 @@ def draw_woodland_motion(image, phase, seconds, world_x):
     place_sprite(image, draw_moose, (5, 57, 49, 118), (5 + forward, 70), (33, 47), phase, step)
     leap = hop_height(seconds, 12.0, 1.35, 10)
     place_sprite(image, draw_hare, (42, 96, 60, 120), (46 + leap // 3, 100 - leap), (15, 20))
-    place_sprite(image, draw_fox, (88, 89, 128, 118), (88, 97), (24, 18), seconds)
+    draw_fox_family(image, seconds)
 
     draw = ImageDraw.Draw(image)
-    draw_calf(draw, seconds)
     draw_leveret(draw, seconds)
-    draw_fox_kit(draw, seconds)
-    draw_owl_family(draw, seconds)
+    draw_owl_garland(draw, seconds)
 
     # The moose leans in with a berry ornament. The hare lifts a gold one in its leap.
     reach = max(0, min(1, (seconds - 11.82) / 0.50))
