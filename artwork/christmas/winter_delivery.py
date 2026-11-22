@@ -1,5 +1,5 @@
 """Animate the gift delivery and the snowman's reaction at native size."""
-from math import cos, pi, sin
+from math import cos, pi, sin, sqrt
 
 from santa_flyby import SANTA_HAND, flight_pose
 
@@ -16,6 +16,7 @@ GIFT_COLORS = (
     ("#ac9eb2", "#806d84", "#c0bfb5"),
     ("#97a2b6", "#878c9f", "#a4b1b9"),
 )
+SNOWBALL_SHADES = ("#53658e", "#7b96b5", "#a7bfd4", "#d2e4e7", "#f7f4e1")
 
 
 def draw_gift(draw, seconds):
@@ -53,6 +54,20 @@ def draw_gift(draw, seconds):
     draw.point((x + 1, y - 4), fill=ribbon)
 
 
+def draw_snowball(draw, x, y, rx, ry):
+    # Use the surface normal of an ellipse with light from the upper right.
+    for py in range(y - ry, y + ry + 1):
+        ny = (py - y) / ry
+        for px in range(x - rx, x + rx + 1):
+            nx = (px - x) / rx
+            depth_squared = 1 - nx * nx - ny * ny
+            if depth_squared < 0:
+                continue
+            light = 0.45 * nx - 0.46 * ny + 0.77 * sqrt(depth_squared)
+            shade = sum(light > threshold for threshold in (0.04, 0.34, 0.61, 0.82))
+            draw.point((px, py), fill=SNOWBALL_SHADES[shade])
+
+
 def draw_snowman(draw, seconds, phase):
     x = 74
     wave_age = seconds - LAND_AT
@@ -70,16 +85,17 @@ def draw_snowman(draw, seconds, phase):
     draw.line(((x + 5, 112), (elbow_x, elbow_y), (hand_x, hand_y)), fill=twig, width=2)
     draw.line(((hand_x, hand_y), (hand_x + 2, hand_y - 1)), fill=twig)
 
-    snow, rim = "#f2f4e7", "#53658e"
-    draw.ellipse((x - 8, 107, x + 8, 122), fill=snow, outline=rim)
-    draw.arc((x - 7, 108, x + 7, 121), 8, 135, fill="#a7bfd4", width=2)
-    draw.point((x, 115), fill="#33334a")
-    draw.point((x, 118), fill="#33334a")
+    draw_snowball(draw, x, 114, 8, 8)
+    for button_y in (115, 118):
+        draw.point((x + 1, button_y - 1), fill="#7b96b5")
+        draw.point((x, button_y), fill="#33334a")
 
     # The head tilts toward Santa on the wave; idle motion comes from the scarf and blinks.
     head_x = x + int(lift >= 0.5)
-    draw.ellipse((head_x - 5, 99, head_x + 5, 111), fill=snow, outline=rim)
+    draw_snowball(draw, head_x, 105, 5, 6)
     draw.rectangle((head_x - 4, 96, head_x + 4, 100), fill="#554364", outline="#ad96b7")
+    draw.ellipse((head_x - 4, 95, head_x + 4, 97), fill="#89749e")
+    draw.line((head_x + 3, 97, head_x + 3, 99), fill="#a891aa")
     draw.rectangle((head_x - 5, 100, head_x + 5, 101), fill="#bc6687")
     draw.line((head_x - 6, 102, head_x + 6, 102), fill="#735b80")
 
@@ -89,6 +105,7 @@ def draw_snowman(draw, seconds, phase):
     draw.point((eyes_x - 2, eyes_y), fill="#373b51")
     draw.point((eyes_x + 2, eyes_y), fill="#373b51")
     draw.line((head_x, 106, head_x + 2 + int(wave), 106), fill="#e68958")
+    draw.point((head_x + 1 + int(wave), 105), fill="#ffc681")
     draw.line(((head_x - 1, 107), (head_x, 108), (head_x + 1, 108)), fill="#715568")
     draw.line((x - 5, 110, x + 5, 110), fill="#bb5372", width=2)
     tail = round(sin(phase * 12 * pi))

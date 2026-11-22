@@ -17,6 +17,14 @@ ORNAMENT_COLORS = (
     ("#786291", "#ab8aca", "#f1c6ed"),
     ("#378b87", "#6dc9ae", "#ddffe7"),
 )
+SNOWFLAKE_PATHS = (
+    (5, -8, 94, 0.08), (40, -8, 37, 0.68),
+    (123, -8, 108, 0.39), (108, 57, 72, 0.86),
+)
+SNOW_GLINTS = (
+    (3, 119), (9, 125), (20, 122), (32, 126), (46, 123), (56, 126), (63, 116),
+    (72, 126), (85, 122), (92, 126), (103, 125), (115, 125), (120, 110), (126, 124),
+)
 
 
 def draw_moon(draw):
@@ -26,10 +34,12 @@ def draw_moon(draw):
     shape.ellipse((7, 7, 26, 26), fill=1)
     shape.ellipse((13, 4, 28, 20), fill=0)
     crescent = {(x, y) for y in range(35) for x in range(35) if mask.getpixel((x, y))}
-    warm_halo = ("#8b6b92", "#62547d", "#413a62", "#282d51", "#181f3a")
-    cool_halo = ("#6a6c9a", "#485782", "#304367", "#223251", "#141f39")
-    for y in range(35):
-        for x in range(35):
+    outer_halo = ("#303955", "#262f4c", "#1d2741", "#151e35", "#0e162a", "#0b1122")
+    warm_halo = ("#b08b9f", "#997b9c", "#786995", "#565480", "#41476b") + outer_halo
+    cool_halo = ("#9f9dc2", "#818eb8", "#697ba4", "#55668e", "#424f75") + outer_halo
+    # The light falls off in fine steps so that the outer edge blends into the sky.
+    for y in range(-1, 40):
+        for x in range(-8, 42):
             if (x, y) in crescent:
                 edge = not all((x + dx, y + dy) in crescent
                                for dx, dy in ((-1, 0), (0, -1), (1, 0), (0, 1)))
@@ -42,8 +52,8 @@ def draw_moon(draw):
                 draw.point((left + x, top + y), fill=color)
                 continue
             distance = min((cx - x) ** 2 + (cy - y) ** 2 for cx, cy in crescent)
-            palette = warm_halo if x < 16 and y > 10 else cool_halo
-            for limit, color in zip((2, 5, 12, 25, 49), palette):
+            palette = warm_halo if x + y > 19 and x < 17 else cool_halo
+            for limit, color in zip((2, 5, 10, 17, 26, 38, 53, 72, 95, 125, 160), palette):
                 if distance <= limit:
                     draw.point((left + x, top + y), fill=color)
                     break
@@ -55,6 +65,58 @@ def draw_moon(draw):
     ):
         if (x, y) in crescent:
             draw.point((left + x, top + y), fill=color)
+
+
+def draw_moon_shimmer(draw, phase):
+    # A soft highlight follows the underside, with small glints in the nearby light.
+    path = ((93, 15), (93, 18), (94, 21), (96, 24), (99, 26),
+            (102, 27), (105, 27), (108, 26), (110, 25))
+    sweep = (phase * 2 + 0.14) % 1
+    if sweep < 0.70:
+        index = int(sweep / 0.70 * len(path))
+        x, y = path[index]
+        draw.point((x, y), fill="#fff4d2")
+        if index:
+            draw.point(path[index - 1], fill="#ffe3ae")
+
+    for index, (x, y) in enumerate(((91, 11), (89, 20), (98, 30), (110, 29), (114, 21))):
+        shimmer = (phase * 2 + index * 0.39) % 1
+        if shimmer < 0.30:
+            bright = 0.08 < shimmer < 0.18
+            draw.point((x, y), fill="#e5d9e8" if bright else "#9f9dc2")
+            if bright and index % 2 == 0:
+                draw.point((x, y + 1), fill="#818eb8")
+
+
+def draw_snow_glints(draw, phase):
+    for index, (x, y) in enumerate(SNOW_GLINTS):
+        pulse = (phase * 3 + index * 0.37) % 1
+        if pulse < 0.27:
+            draw.point((x, y), fill="#afc1d6")
+        if 0.06 < pulse < 0.20:
+            draw.line((x - 1, y, x + 1, y), fill="#c4d3de")
+            draw.point((x, y), fill="#f7f4e1")
+            if index % 3 == 0 and 0.10 < pulse < 0.16:
+                draw.point((x, y - 1), fill="#d9e4e5")
+
+
+def draw_large_snowflakes(draw, phase):
+    for center_x, top, bottom, offset in SNOWFLAKE_PATHS:
+        age = (phase + offset) % 1
+        if not 0.04 < age < 0.94:
+            continue
+        x = center_x + round(2 * sin(age * 4 * pi))
+        y = round(top + (bottom - top) * age)
+        color = "#afc1d6" if 0.12 < age < 0.82 else "#879fbc"
+        # Six stems and their forks read as a crystalline flake at a distance.
+        for pole in (-1, 1):
+            draw.line((x, y, x, y + 4 * pole), fill=color)
+            for side in (-1, 1):
+                draw.line((x, y + 2 * pole, x + side, y + 3 * pole), fill=color)
+                draw.line((x, y, x + 4 * side, y + 2 * pole), fill=color)
+                draw.point((x + 3 * side, y + 3 * pole), fill=color)
+                draw.point((x + 4 * side, y + pole), fill=color)
+        draw.point((x, y), fill="#e5d9e8")
 
 
 def draw_cabin(draw):

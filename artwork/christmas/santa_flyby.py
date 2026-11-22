@@ -36,18 +36,27 @@ def flight_pose(seconds):
 
 
 def draw_reindeer(draw, x, y, stride, leader, glow):
-    fur, edge = "#31415f", "#8293b2"
-    # The far legs use a cooler rim so the two pairs stay distinct in motion.
+    moonlit = abs(x + 12 - 101) < 19
+    lit_fur = "#d2bea9" if moonlit else "#c19b89"
+    # Separate the legs by depth, with darker, cooler far legs.
     for hip, poses in ((5, HIND_LEGS), (11, FRONT_LEGS)):
         for far in (True, False):
             knee, hoof = poses[(stride + 2 * far) % len(poses)]
             leg_x = x + hip + 2 * far
+            leg_tip = (leg_x + hoof[0], y + 11 + hoof[1] - far)
             draw.line(
                 ((leg_x, y + 11), (leg_x + knee[0], y + 11 + knee[1]),
-                 (leg_x + hoof[0], y + 11 + hoof[1] - far)),
-                fill="#4d5d7c" if far else edge,
+                 leg_tip),
+                fill="#6b607b" if far else lit_fur,
             )
-    draw.polygon(pixels(x, y, DEER_BODY), fill=fur, outline=edge)
+            draw.point(leg_tip, fill="#4a435e" if far else "#786178")
+    draw.polygon(pixels(x, y, DEER_BODY), fill="#674c62", outline="#927888")
+    draw.polygon(pixels(x, y, ((3, 9), (5, 8), (10, 8), (12, 6), (15, 5),
+                               (17, 7), (14, 7), (11, 10), (8, 11), (4, 11))),
+                 fill="#9e766f")
+    draw.line(pixels(x, y, ((4, 9), (6, 8), (10, 8), (12, 6))), fill=lit_fur)
+    draw.line(pixels(x, y, ((4, 12), (9, 12), (11, 11))), fill="#6e586d")
+    draw.line(pixels(x, y, ((13, 5), (15, 5), (17, 7))), fill=lit_fur)
     draw.line(pixels(x, y, ((13, 5), (12, 2), (10, 0), (10, -1))), fill="#a6b1c5")
     draw.line(pixels(x, y, ((12, 2), (13, 1), (13, -1))), fill="#a6b1c5")
     draw.line(pixels(x, y, ((13, 4), (15, 2), (16, 1))), fill="#607593")
@@ -64,6 +73,11 @@ def draw_reindeer(draw, x, y, stride, leader, glow):
 
 
 def draw_sleigh(draw, x, y, flutter):
+    # The far edge of the sleigh is visible above its curved near side.
+    draw.line(pixels(x, y, ((-1, 7), (5, 8), (17, 8), (21, 7), (24, 5), (25, 6))),
+              fill="#956c79")
+    draw.line(pixels(x, y, ((3, 14), (5, 15), (21, 15), (25, 13), (26, 11))),
+              fill="#87646e")
     # The sack slumps over the back rail with two toys peeking out of its open cuff.
     draw.rectangle((x - 2, y + 2, x + 2, y + 6), fill="#6cbea8", outline="#399782")
     draw.line((x, y + 2, x, y + 6), fill="#f1dea2")
@@ -74,21 +88,29 @@ def draw_sleigh(draw, x, y, flutter):
                       (11, 9), (8, 11), (-1, 11), (-3, 9), (-2, 7))),
         fill="#a9755b", outline="#dea878",
     )
+    draw.polygon(pixels(x, y, ((-1, 6), (3, 6), (6, 5), (7, 6), (5, 8), (0, 8))),
+                 fill="#d6a478")
     draw.line(pixels(x, y, ((-3, 5), (1, 6), (7, 5))), fill="#f1c595")
     draw.line(pixels(x, y, ((1, 7), (2, 9), (6, 10))), fill="#70475a")
     draw.line(pixels(x, y, ((5, 7), (5, 8), (8, 9))), fill="#805266")
 
     # Side profile, hat, beard, and the hand on the reins.
     draw.polygon(pixels(x, y, ((9, 10), (10, 5), (13, 4), (17, 6), (20, 8), (17, 10))),
-                 fill="#80384f", outline="#b76272")
-    draw.line(pixels(x, y, ((14, 6), (17, 7), (20, 7))), fill="#a6495d")
+                 fill="#9b4560", outline="#b76272")
+    draw.polygon(pixels(x, y, ((10, 6), (12, 5), (14, 5), (16, 7), (12, 8))),
+                 fill="#db7380")
+    draw.line(pixels(x, y, ((14, 7), (17, 8), (20, 8))), fill="#72364f")
+    draw.line(pixels(x, y, ((14, 6), (17, 7), (20, 7))), fill="#ca687b")
     hand_x, hand_y = SANTA_HAND
     draw.point((x + hand_x, y + hand_y), fill="#d5b8a3")
     draw.rectangle((x + 13, y + 1, x + 16, y + 4), fill="#d29c87")
+    draw.line((x + 15, y + 2, x + 16, y + 2), fill="#f1c595")
     draw.point((x + 17, y + 3), fill="#e4b79c")
     draw.line(pixels(x, y, ((16, 4), (17, 5), (15, 6), (14, 4))), fill="#d8d7e0")
+    draw.point((x + 15, y + 6), fill="#a1b6ca")
     draw.polygon(pixels(x, y, ((11, 1), (11, -1), (13, -3), (15, -2), (17, 1))),
                  fill="#b34458")
+    draw.line(pixels(x, y, ((12, -2), (13, -3), (15, -2), (16, 0))), fill="#e37d83")
     draw.line((x + 11, y + 1, x + 17, y + 1), fill="#ddd8e5")
     draw.point((x + 10, y - 1 - flutter), fill="#ddd8e5")
 
@@ -96,11 +118,16 @@ def draw_sleigh(draw, x, y, flutter):
     draw.polygon(
         pixels(x, y, ((-2, 7), (1, 8), (3, 10), (16, 10), (21, 9), (24, 7),
                       (25, 8), (23, 11), (19, 13), (2, 13), (0, 11))),
-        fill="#673650", outline="#b67a83",
+        fill="#783950", outline="#b67a83",
     )
+    draw.polygon(pixels(x, y, ((1, 10), (4, 11), (16, 11), (22, 9), (20, 11),
+                               (16, 12), (4, 12))), fill="#ac5865")
+    draw.line(pixels(x, y, ((3, 10), (16, 10), (21, 9), (24, 7))), fill="#e4ab75")
+    draw.line(pixels(x, y, ((4, 13), (17, 13), (22, 11))), fill="#5d304b")
     draw.line(pixels(x, y, ((4, 13), (4, 15))), fill="#aa826e")
     draw.line(pixels(x, y, ((18, 13), (18, 15))), fill="#aa826e")
     draw.line(pixels(x, y, ((0, 14), (2, 16), (20, 16), (24, 14), (25, 12))), fill="#d4ab79")
+    draw.line(pixels(x, y, ((3, 16), (10, 16))), fill="#f1c595")
 
 
 def draw_trail(draw, seconds):

@@ -13,7 +13,10 @@ from winter_scenery import (
     draw_cabin,
     draw_cabin_lights,
     draw_chimney_smoke,
+    draw_large_snowflakes,
     draw_moon,
+    draw_moon_shimmer,
+    draw_snow_glints,
     draw_tree,
     draw_tree_lights,
 )
@@ -169,8 +172,11 @@ def draw_frame(background, index):
         draw.point((x, 103), fill=("#ffb276", "#a8e4cb", "#fb7668")[lamp])
     draw_chimney_smoke(draw, phase)
     draw_tree_lights(draw, phase)
+    draw_snow_glints(draw, phase)
+    draw_moon_shimmer(draw, phase)
     draw_flyby(draw, seconds)
     draw_delivery(draw, seconds, phase)
+    draw_large_snowflakes(draw, phase)
     draw_title(image, phase)
     return image
 
