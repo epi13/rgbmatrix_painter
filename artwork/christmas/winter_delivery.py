@@ -1,5 +1,5 @@
 """Animate the gift delivery and the snowman's reaction at native size."""
-from math import pi, sin
+from math import cos, pi, sin
 
 from santa_flyby import SANTA_HAND, flight_pose
 
@@ -58,17 +58,17 @@ def draw_snowman(draw, seconds, phase):
     wave_age = seconds - LAND_AT
     wave = 0 <= wave_age < 1.30
     lift = max(0, min(wave_age / 0.16, (1.30 - wave_age) / 0.19, 1))
-    hand_x = x + 12 + round(lift * sin(wave_age * 7 * pi) * 2)
-    hand_y = 113 - round(lift * (19 + sin(wave_age * 7 * pi) * 2))
-    elbow_y = 112 - round(8 * lift)
+    elbow_x, elbow_y = x + 9, 111 - round(5 * lift)
+    # Rotate the same length of twig around the elbow throughout the wave.
+    angle = 0.45 - lift * (1.55 + 0.50 * sin(wave_age * 7 * pi))
+    hand_x = elbow_x + round(5 * cos(angle))
+    hand_y = elbow_y + round(5 * sin(angle))
 
-    twig = "#9d776f"
-    draw.line(((x - 5, 113), (x - 9, 110), (x - 11, 107)), fill=twig, width=2)
-    draw.line(((x + 5, 112), (x + 9, elbow_y), (hand_x, hand_y)), fill=twig, width=2)
-    draw.line(((x + 9, elbow_y), (hand_x, hand_y)), fill="#e3af87")
-    draw.ellipse((hand_x - 1, hand_y - 2, hand_x + 1, hand_y + 1), fill="#e27d84")
-    if wave:
-        draw.point((hand_x, hand_y - 1), fill="#ffd29d")
+    twig = "#be956f"
+    draw.line(((x - 5, 113), (x - 9, 110), (x - 12, 107)), fill=twig, width=2)
+    draw.line(((x - 10, 109), (x - 13, 109)), fill=twig)
+    draw.line(((x + 5, 112), (elbow_x, elbow_y), (hand_x, hand_y)), fill=twig, width=2)
+    draw.line(((hand_x, hand_y), (hand_x + 2, hand_y - 1)), fill=twig)
 
     snow, rim = "#f2f4e7", "#53658e"
     draw.ellipse((x - 8, 107, x + 8, 122), fill=snow, outline=rim)
@@ -92,7 +92,7 @@ def draw_snowman(draw, seconds, phase):
     draw.line(((head_x - 1, 107), (head_x, 108), (head_x + 1, 108)), fill="#715568")
     draw.line((x - 5, 110, x + 5, 110), fill="#bb5372", width=2)
     tail = round(sin(phase * 12 * pi))
-    draw.line(((x + 4, 110), (x + 6, 113), (x + 8, 114 + tail)), fill="#d97282", width=2)
+    draw.line(((x + 4, 110), (x + 5, 113), (x + 6, 114 + tail)), fill="#d97282", width=2)
 
 
 def draw_delivery(draw, seconds, phase):

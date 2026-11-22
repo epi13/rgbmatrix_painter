@@ -9,6 +9,14 @@ from PIL import Image, ImageChops, ImageDraw
 
 from santa_flyby import draw_flyby
 from winter_delivery import draw_delivery
+from winter_scenery import (
+    draw_cabin,
+    draw_cabin_lights,
+    draw_chimney_smoke,
+    draw_moon,
+    draw_tree,
+    draw_tree_lights,
+)
 
 
 SIZE = 128
@@ -27,10 +35,6 @@ GLYPHS = {
     "A": ("01110", "10001", "10001", "11111", "10001", "10001", "10001"),
     "M": ("10001", "11011", "10101", "10101", "10001", "10001", "10001"),
 }
-TREE_LIGHTS = (
-    (99, 83), (94, 91), (105, 92), (99, 97), (91, 101), (109, 101),
-    (101, 106), (88, 110), (110, 111), (96, 113),
-)
 
 
 def title_mask(text):
@@ -91,7 +95,7 @@ def draw_title(image, phase):
                 draw.line((x, y - 2, x, y + 2), fill="#fff8dc")
 
 
-def spruce(draw, x, y, width, height, palette, snow=None):
+def spruce(draw, x, y, width, height, palette):
     dark, light, trunk = palette
     draw.rectangle((x - 1, y + height - 7, x + 1, y + height + 1), fill=trunk)
     for tier in range(3):
@@ -100,18 +104,12 @@ def spruce(draw, x, y, width, height, palette, snow=None):
         tips = max(2, (tier + 2) * width // 8)
         draw.polygon(((x, top), (x - tips, bottom), (x + tips, bottom)), fill=dark)
         draw.polygon(((x, top), (x - tips, bottom), (x, bottom - 2)), fill=light)
-        if snow:
-            draw.line((x, top + 2, x - tips + 1, bottom, x - tips + 4, bottom),
-                      fill=snow)
 
 
 def scene():
     image = Image.new("RGB", (SIZE, SIZE), SKY)
     draw = ImageDraw.Draw(image)
-    draw.ellipse((93, 8, 112, 27), fill="#eac58f")
-    draw.arc((93, 8, 112, 27), 60, 260, fill="#fff0c7")
-    draw.ellipse((99, 5, 114, 21), fill=SKY)
-    draw.point((96, 20), fill="#c6997b")
+    draw_moon(draw)
 
     for x, y, w, h in ((1, 81, 17, 24), (17, 86, 15, 21), (62, 84, 18, 23),
                        (72, 88, 14, 21), (121, 86, 14, 20)):
@@ -125,24 +123,8 @@ def scene():
     draw.ellipse((8, 114, 62, 121), fill="#7d9bbe")
     draw.ellipse((85, 115, 114, 121), fill="#7d9bbe")
 
-    # The little farm stand has a snow-covered roof, cedar planks and a wreath.
-    draw.rectangle((45, 82, 50, 98), fill="#624051")
-    draw.line((45, 82, 50, 82), fill="#b1c9dc")
-    draw.rectangle((14, 98, 54, 117), fill="#8d454c", outline="#502837")
-    for x in range(17, 54, 4):
-        draw.line((x, 104, x, 116), fill="#a85152")
-    draw.polygon(((8, 102), (33, 82), (59, 102)), fill="#3d2941")
-    draw.line(((9, 100), (33, 81), (58, 100)), fill="#b1c9dc", width=3)
-    draw.line(((9, 98), (33, 80), (58, 98)), fill="#e1e8df", width=2)
-    draw.rectangle((29, 106, 38, 117), fill="#432b38", outline="#593440")
-    draw.rectangle((32, 108, 35, 111), fill="#f4c47e")
-    draw.point((36, 114), fill="#f4c47e")
-    draw.ellipse((30, 94, 36, 100), outline="#69a878")
-    draw.point((33, 94), fill="#fb7668")
-    draw.line((29, 118, 39, 118), fill="#e1e8df")
-
-    # Evergreen, small wrapped presents, and the snowman's ground shadow.
-    spruce(draw, 99, 77, 30, 40, ("#164d48", "#347961", "#79564e"), "#a1c6c1")
+    draw_cabin(draw)
+    draw_tree(draw)
     draw.rectangle((104, 115, 110, 121), fill="#b05054")
     draw.line((107, 115, 107, 121), fill="#ffc98c")
     draw.rectangle((111, 117, 116, 121), fill="#426f89")
@@ -162,7 +144,7 @@ def draw_frame(background, index):
     draw = ImageDraw.Draw(image)
     phase = index / FRAME_COUNT
     seconds = index * DELAY_MS / 1000
-    # Preserve the original scenery's 80 ms light and smoke beats.
+    # Preserve the original cabin lights' 80 ms beat.
     tick = index * DELAY_MS // 80
 
     for x, y, offset in STARS:
@@ -181,26 +163,12 @@ def draw_frame(background, index):
         if py < 119:
             draw.point((px, py), fill="#d4e5ec" if speed else "#8199b5")
 
-    # Small window and tree lights take turns glowing through the snowfall.
-    for offset, x in enumerate((20, 44)):
-        bright = sin((phase * 4 + offset / 3) * 2 * pi) > -0.25
-        draw.rectangle((x, 107, x + 4, 112), fill="#ffd098" if bright else "#d49271",
-                       outline="#603944")
-        draw.line((x + 2, 108, x + 2, 111), fill="#a55e55")
-    for offset, x in enumerate(range(14, 54, 5)):
+    draw_cabin_lights(draw, phase)
+    for offset, x in enumerate(range(13, 48, 5)):
         lamp = (tick + offset * 7) // 10 % 3
-        draw.point((x, 102), fill=("#ffb276", "#a8e4cb", "#fb7668")[lamp])
-    for offset, (x, y) in enumerate(TREE_LIGHTS):
-        palette = ("#ffc98c", "#fa8c81", "#b6e7db")
-        lamp = (tick + offset * 7) // 10 % 4
-        draw.point((x, y), fill=palette[offset % 3] if lamp != 0 else "#739985")
-    draw.line((97, 78, 101, 78), fill="#ffc98c")
-    draw.line((99, 75, 99, 80), fill="#fff0c7")
-
-    for offset in range(3):
-        rise = (tick + offset * 10) % 30
-        if rise < 24:
-            draw.point((48 + rise // 6, 80 - rise // 4), fill="#8199b5" if rise < 12 else "#415471")
+        draw.point((x, 103), fill=("#ffb276", "#a8e4cb", "#fb7668")[lamp])
+    draw_chimney_smoke(draw, phase)
+    draw_tree_lights(draw, phase)
     draw_flyby(draw, seconds)
     draw_delivery(draw, seconds, phase)
     draw_title(image, phase)
