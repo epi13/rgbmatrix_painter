@@ -18,105 +18,111 @@ ORNAMENT_COLORS = (
     ("#378b87", "#6dc9ae", "#ddffe7"),
 )
 SNOWFLAKE_PATHS = (
-    (5, -8, 94, 0.08), (40, -8, 37, 0.68),
-    (123, -8, 108, 0.39), (108, 57, 72, 0.86),
+    (5, -8, 101, 0.05), (40, -8, 45, 0.68),
+    (122, -5, 103, 0.37), (108, 53, 73, 0.86),
+)
+FLAKE_SHAPE = ("..#..", "#.#.#", ".###.", "#.#.#", "..#..")
+FLAKE_COLORS = (
+    ("#344659", "#566b84", "#8b9fb2"),
+    ("#444658", "#6b6984", "#a49ab4"),
+    ("#394c52", "#5e7980", "#94b0b6"),
 )
 SNOW_GLINTS = (
-    (3, 119), (9, 125), (20, 122), (32, 126), (46, 123), (56, 126), (63, 116),
-    (72, 126), (85, 122), (92, 126), (103, 125), (115, 125), (120, 110), (126, 124),
+    (3, 119), (5, 108), (9, 125), (20, 122), (32, 126), (46, 123), (56, 126), (56, 118),
+    (63, 116), (67, 125), (73, 126), (78, 125), (85, 122), (92, 126), (92, 117),
+    (100, 125), (109, 126), (115, 125), (118, 113), (122, 106), (126, 111), (126, 124),
 )
+MOON_X, MOON_Y = 94, 10
+MOON_SIZE = 17
+
+
+def make_crescent():
+    mask = Image.new("1", (MOON_SIZE, MOON_SIZE))
+    shape = ImageDraw.Draw(mask)
+    shape.ellipse((0, 0, 16, 16), fill=1)
+    shape.ellipse((5, -3, 18, 11), fill=0)
+    return {(x, y) for y in range(MOON_SIZE) for x in range(MOON_SIZE) if mask.getpixel((x, y))}
+
+
+MOON_PIXELS = make_crescent()
 
 
 def draw_moon(draw):
-    left, top = 86, 1
-    mask = Image.new("1", (35, 35))
-    shape = ImageDraw.Draw(mask)
-    shape.ellipse((7, 7, 26, 26), fill=1)
-    shape.ellipse((13, 4, 28, 20), fill=0)
-    crescent = {(x, y) for y in range(35) for x in range(35) if mask.getpixel((x, y))}
-    outer_halo = ("#303955", "#262f4c", "#1d2741", "#151e35", "#0e162a", "#0b1122")
-    warm_halo = ("#b08b9f", "#997b9c", "#786995", "#565480", "#41476b") + outer_halo
-    cool_halo = ("#9f9dc2", "#818eb8", "#697ba4", "#55668e", "#424f75") + outer_halo
-    # The light falls off in fine steps so that the outer edge blends into the sky.
-    for y in range(-1, 40):
-        for x in range(-8, 42):
-            if (x, y) in crescent:
-                edge = not all((x + dx, y + dy) in crescent
+    # Neutral luminance steps prevent the LED halo from reading as saturated blue.
+    falloff = ((1, 106), (4, 86), (9, 70), (15, 56), (24, 45),
+               (36, 36), (49, 28), (64, 22), (81, 17), (100, 13))
+    for y in range(-10, MOON_SIZE + 10):
+        for x in range(-10, MOON_SIZE + 10):
+            position = (MOON_X + x, MOON_Y + y)
+            if (x, y) in MOON_PIXELS:
+                edge = not all((x + dx, y + dy) in MOON_PIXELS
                                for dx, dy in ((-1, 0), (0, -1), (1, 0), (0, 1)))
-                if x <= 9 or y < 11:
-                    color = "#fff2c7" if edge else "#ffe3ae"
-                elif y >= 23:
-                    color = "#c9968d" if edge else "#edbb9a"
+                if x <= 2 or y <= 3:
+                    color = "#e9e8e3" if edge else "#dbdad6"
+                elif y >= 14:
+                    color = "#afadb0" if edge else "#c5c3c4"
                 else:
-                    color = "#e7ba98" if edge else "#f5d39e"
-                draw.point((left + x, top + y), fill=color)
+                    color = "#bfbdbe" if edge else "#d6d4d2"
+                draw.point(position, fill=color)
                 continue
-            distance = min((cx - x) ** 2 + (cy - y) ** 2 for cx, cy in crescent)
-            palette = warm_halo if x + y > 19 and x < 17 else cool_halo
-            for limit, color in zip((2, 5, 10, 17, 26, 38, 53, 72, 95, 125, 160), palette):
+            distance = min((cx - x) ** 2 + (cy - y) ** 2 for cx, cy in MOON_PIXELS)
+            for limit, value in falloff:
                 if distance <= limit:
-                    draw.point((left + x, top + y), fill=color)
+                    draw.point(position, fill=(value, value, value))
                     break
-    for x, y, color in (
-        (11, 12, "#cc9985"), (10, 13, "#d6a98f"), (13, 16, "#d1a08a"),
-        (12, 17, "#ffe9b9"), (9, 18, "#d3a08a"), (13, 20, "#bd8e80"),
-        (14, 20, "#c69a86"), (14, 21, "#ffeab9"), (17, 23, "#d2a089"),
-        (20, 24, "#ffdeb1"), (23, 23, "#bd8e80"),
-    ):
-        if (x, y) in crescent:
-            draw.point((left + x, top + y), fill=color)
+    # Crater pits and their lit lips stay inside the crescent.
+    for x, y, color in ((2, 6, "#b9b7ba"), (3, 7, "#e5e4df"), (2, 10, "#b9b7ba"),
+                        (4, 11, "#a6a5a9"), (5, 11, "#b9b7ba"), (5, 12, "#e5e4df"),
+                        (8, 13, "#b9b7ba"), (9, 13, "#a6a5a9"), (9, 14, "#e5e4df"),
+                        (12, 12, "#b9b7ba"), (12, 14, "#e5e4df")):
+        if (x, y) in MOON_PIXELS:
+            draw.point((MOON_X + x, MOON_Y + y), fill=color)
 
 
 def draw_moon_shimmer(draw, phase):
-    # A soft highlight follows the underside, with small glints in the nearby light.
-    path = ((93, 15), (93, 18), (94, 21), (96, 24), (99, 26),
-            (102, 27), (105, 27), (108, 26), (110, 25))
-    sweep = (phase * 2 + 0.14) % 1
-    if sweep < 0.70:
-        index = int(sweep / 0.70 * len(path))
-        x, y = path[index]
-        draw.point((x, y), fill="#fff4d2")
-        if index:
-            draw.point(path[index - 1], fill="#ffe3ae")
-
-    for index, (x, y) in enumerate(((91, 11), (89, 20), (98, 30), (110, 29), (114, 21))):
-        shimmer = (phase * 2 + index * 0.39) % 1
-        if shimmer < 0.30:
-            bright = 0.08 < shimmer < 0.18
-            draw.point((x, y), fill="#e5d9e8" if bright else "#9f9dc2")
-            if bright and index % 2 == 0:
-                draw.point((x, y + 1), fill="#818eb8")
+    # Use the same diagonal sweep as the lettering, clipped to the moon's face.
+    sweep = (phase * 2 + 0.18) % 1
+    if sweep >= 0.35:
+        return
+    center = -3 + sweep / 0.35 * 30
+    for x, y in MOON_PIXELS:
+        distance = abs(x + y * 0.45 - center)
+        if distance < 1.45:
+            color = "#f9f7ee" if distance < 0.60 else "#eceae5"
+            draw.point((MOON_X + x, MOON_Y + y), fill=color)
 
 
 def draw_snow_glints(draw, phase):
     for index, (x, y) in enumerate(SNOW_GLINTS):
-        pulse = (phase * 3 + index * 0.37) % 1
-        if pulse < 0.27:
+        pulse = (phase * 4 + index * 0.37) % 1
+        if pulse < 0.32:
             draw.point((x, y), fill="#afc1d6")
-        if 0.06 < pulse < 0.20:
+        if 0.06 < pulse < 0.23:
             draw.line((x - 1, y, x + 1, y), fill="#c4d3de")
-            draw.point((x, y), fill="#f7f4e1")
-            if index % 3 == 0 and 0.10 < pulse < 0.16:
+            draw.point((x, y), fill="#f7f4e1" if index % 3 else "#fff2c7")
+            if index % 2 == 0 and 0.10 < pulse < 0.18:
                 draw.point((x, y - 1), fill="#d9e4e5")
+                draw.point((x, y + 1), fill="#afc1d6")
 
 
-def draw_large_snowflakes(draw, phase):
-    for center_x, top, bottom, offset in SNOWFLAKE_PATHS:
-        age = (phase + offset) % 1
-        if not 0.04 < age < 0.94:
+def draw_stylized_snowflakes(draw, phase):
+    for index, (center_x, top, bottom, offset) in enumerate(SNOWFLAKE_PATHS):
+        cycle = phase * 2 + offset
+        age = cycle % 1
+        if not 0.10 < age < 0.73:
             continue
         x = center_x + round(2 * sin(age * 4 * pi))
         y = round(top + (bottom - top) * age)
-        color = "#afc1d6" if 0.12 < age < 0.82 else "#879fbc"
-        # Six stems and their forks read as a crystalline flake at a distance.
-        for pole in (-1, 1):
-            draw.line((x, y, x, y + 4 * pole), fill=color)
-            for side in (-1, 1):
-                draw.line((x, y + 2 * pole, x + side, y + 3 * pole), fill=color)
-                draw.line((x, y, x + 4 * side, y + 2 * pole), fill=color)
-                draw.point((x + 3 * side, y + 3 * pole), fill=color)
-                draw.point((x + 4 * side, y + pole), fill=color)
-        draw.point((x, y), fill="#e5d9e8")
+        # Briefly reach full brightness, then step down before leaving the path.
+        visibility = min(1, (age - 0.10) * 8, (0.73 - age) * 6)
+        tint = (index + int(cycle) % 2 + int(age > 0.35)) % len(FLAKE_COLORS)
+        colors = FLAKE_COLORS[tint]
+        for row, shape in enumerate(FLAKE_SHAPE):
+            for col, pixel in enumerate(shape):
+                if pixel == "#":
+                    center = col == row == 2
+                    step = min(2, int(visibility * (3 if center else 2.2)))
+                    draw.point((x + col - 2, y + row - 2), fill=colors[step])
 
 
 def draw_cabin(draw):
@@ -199,18 +205,27 @@ def draw_chimney_smoke(draw, phase):
 
 def draw_tree(draw):
     draw.rectangle((97, 108, 101, 118), fill="#8a665f", outline="#694b58")
+    draw.line((100, 112, 100, 117), fill="#b28a83")
     for top, bottom, width in ((94, 114, 15), (88, 107, 13), (83, 100, 10), (77, 92, 7)):
         left, right = 99 - width, 99 + width
-        draw.polygon(((99, top), (left, bottom - 1), (96, bottom - 2), (right, bottom)),
-                     fill="#327b68", outline="#245b56")
-        draw.polygon(((99, top + 1), (left + 1, bottom - 2), (98, bottom - 4)),
-                     fill="#59a68a")
-        draw.line(((left + 1, bottom - 2), (left + 4, bottom - 2), (left + 6, bottom - 3)),
-                  fill="#a1c6be")
-        draw.line(((98, bottom - 2), (right - 1, bottom - 1)), fill="#499881")
+        ridge = 100 + width // 5
+        # Build each bough as sloping lit faces with a scalloped, shaded underside.
+        draw.polygon(((99, top), (left, bottom - 2), (left + 3, bottom - 1),
+                      (95, bottom - 1), (98, bottom + 1), (ridge + 1, bottom),
+                      (right - 2, bottom - 1), (right, bottom - 2)), fill="#29594e")
+        draw.polygon(((99, top), (left + 1, bottom - 2), (94, bottom - 3),
+                      (ridge, bottom - 3)), fill="#457962")
+        draw.polygon(((99, top), (ridge, bottom - 3), (right - 1, bottom - 2),
+                      (right - 3, bottom - 5)), fill="#619b79")
+        draw.line(((99, top + 2), (ridge - 1, bottom - 5), (ridge + 3, bottom - 4)),
+                  fill="#89b89b")
+        draw.line(((left + 2, bottom - 2), (left + 5, bottom - 3)), fill="#81a991")
+        draw.line(((right - 4, bottom - 4), (right - 2, bottom - 3),
+                   (right - 1, bottom - 3)), fill="#a9c7ab")
     for swag in (((95, 89), (99, 91), (104, 90)),
                  ((91, 97), (97, 100), (104, 100), (108, 98)),
                  ((87, 107), (94, 110), (103, 111), (111, 108))):
+        draw.line(tuple((x, y + 1) for x, y in swag), fill="#795f57")
         draw.line(swag, fill="#c6a271")
 
 
@@ -219,8 +234,10 @@ def draw_tree_lights(draw, phase):
         shadow, body, glint = ORNAMENT_COLORS[theme]
         shine = (phase * 3 + index * 0.27) % 1
         draw.line((x - 1, y, x + 1, y), fill=body)
-        draw.point((x, y + 1), fill=shadow)
+        draw.line((x, y + 1, x + 1, y + 1), fill=shadow)
         draw.point((x, y - 1), fill=glint if shine < 0.42 else body)
+        if shine < 0.23:
+            draw.point((x + 1, y), fill=glint)
     x, y = 99, 76
     shine = (phase * 4 + 0.1) % 1
     draw.line((x - 2, y, x + 2, y), fill="#ffce88")

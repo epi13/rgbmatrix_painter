@@ -11,12 +11,35 @@ GIFT_X, GIFT_Y = 122, 118
 GIFT_FADE_START = 9.12
 GIFT_FADE_STEP = 0.12
 GIFT_COLORS = (
-    ("#e08fa0", "#684562", "#ffedad"),
-    ("#c899ad", "#755771", "#dfd5b4"),
-    ("#ac9eb2", "#806d84", "#c0bfb5"),
-    ("#97a2b6", "#878c9f", "#a4b1b9"),
+    ("#ca788e", "#84546d", "#eba6a4", "#ffedad"),
+    ("#bc8aa0", "#846780", "#d5a5ad", "#dfd5b4"),
+    ("#ac9eb2", "#847f99", "#b4a9b8", "#c0bfb5"),
+    ("#97a2b6", "#8a9bb0", "#9babbe", "#a4b1b9"),
 )
 SNOWBALL_SHADES = ("#53658e", "#7b96b5", "#a7bfd4", "#d2e4e7", "#f7f4e1")
+
+
+def draw_wrapped_present(draw, x, y, width, height, colors, tilt=0):
+    """Draw a box from the front-left corner of its base, with the right side visible."""
+    front, side, lid, ribbon = colors
+    right = x + width - 1
+    top = y - height + 1
+    corner_a, corner_b = (x, top + tilt), (right, top - tilt)
+    far_a, far_b = (x + 2, top + tilt - 2), (right + 2, top - tilt - 2)
+    foot_a, foot_b = (x, y + tilt), (right, y - tilt)
+    draw.polygon((corner_a, corner_b, foot_b, foot_a), fill=front)
+    draw.polygon((corner_b, far_b, (right + 2, y - tilt - 2), foot_b), fill=side)
+    draw.polygon((far_a, far_b, corner_b, corner_a), fill=lid)
+    center = (x + right) // 2
+    draw.line((center, y - 1, center, top, center + 2, top - 2), fill=ribbon)
+    draw.line((x, top + tilt + 2, right, top - tilt + 2, right + 2, top - tilt), fill=ribbon)
+    draw.point((center, top - 2), fill=ribbon)
+    draw.point((center + 2, top - 3), fill=ribbon)
+
+
+def draw_presents_under_tree(draw):
+    draw_wrapped_present(draw, 102, 122, 6, 7, ("#ad535b", "#783e54", "#e18881", "#ffc98c"))
+    draw_wrapped_present(draw, 111, 122, 5, 5, ("#568d9a", "#3d607f", "#85b7bc", "#d8e3a6"))
 
 
 def draw_gift(draw, seconds):
@@ -46,12 +69,7 @@ def draw_gift(draw, seconds):
             if fade >= len(GIFT_COLORS):
                 return
 
-    paper, edge, ribbon = GIFT_COLORS[fade]
-    draw.polygon(((x - 3, y - 3 + tilt), (x + 3, y - 3 - tilt),
-                  (x + 3, y + 3 - tilt), (x - 3, y + 3 + tilt)), fill=paper, outline=edge)
-    draw.line((x - 2, y - 1 + tilt, x + 2, y - 1 - tilt), fill=ribbon)
-    draw.line((x, y - 3, x, y + 2), fill=ribbon)
-    draw.point((x + 1, y - 4), fill=ribbon)
+    draw_wrapped_present(draw, x - 3, y + 3, 5, 6, GIFT_COLORS[fade], tilt)
 
 
 def draw_snowball(draw, x, y, rx, ry):

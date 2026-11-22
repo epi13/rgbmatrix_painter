@@ -8,15 +8,15 @@ from random import Random
 from PIL import Image, ImageChops, ImageDraw
 
 from santa_flyby import draw_flyby
-from winter_delivery import draw_delivery
+from winter_delivery import draw_delivery, draw_presents_under_tree
 from winter_scenery import (
     draw_cabin,
     draw_cabin_lights,
     draw_chimney_smoke,
-    draw_large_snowflakes,
     draw_moon,
     draw_moon_shimmer,
     draw_snow_glints,
+    draw_stylized_snowflakes,
     draw_tree,
     draw_tree_lights,
 )
@@ -128,10 +128,7 @@ def scene():
 
     draw_cabin(draw)
     draw_tree(draw)
-    draw.rectangle((104, 115, 110, 121), fill="#b05054")
-    draw.line((107, 115, 107, 121), fill="#ffc98c")
-    draw.rectangle((111, 117, 116, 121), fill="#426f89")
-    draw.line((113, 117, 113, 121), fill="#d8e3a6")
+    draw_presents_under_tree(draw)
     draw.ellipse((64, 119, 84, 124), fill="#7288a9")
     return image
 
@@ -176,7 +173,7 @@ def draw_frame(background, index):
     draw_moon_shimmer(draw, phase)
     draw_flyby(draw, seconds)
     draw_delivery(draw, seconds, phase)
-    draw_large_snowflakes(draw, phase)
+    draw_stylized_snowflakes(draw, phase)
     draw_title(image, phase)
     return image
 

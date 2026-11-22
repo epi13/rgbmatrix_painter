@@ -37,7 +37,7 @@ def flight_pose(seconds):
 
 def draw_reindeer(draw, x, y, stride, leader, glow):
     moonlit = abs(x + 12 - 101) < 19
-    lit_fur = "#d2bea9" if moonlit else "#c19b89"
+    lit_fur = "#c3af97" if moonlit else "#ae987b"
     # Separate the legs by depth, with darker, cooler far legs.
     for hip, poses in ((5, HIND_LEGS), (11, FRONT_LEGS)):
         for far in (True, False):
@@ -47,21 +47,21 @@ def draw_reindeer(draw, x, y, stride, leader, glow):
             draw.line(
                 ((leg_x, y + 11), (leg_x + knee[0], y + 11 + knee[1]),
                  leg_tip),
-                fill="#6b607b" if far else lit_fur,
+                fill="#685c51" if far else lit_fur,
             )
-            draw.point(leg_tip, fill="#4a435e" if far else "#786178")
-    draw.polygon(pixels(x, y, DEER_BODY), fill="#674c62", outline="#927888")
+            draw.point(leg_tip, fill="#514b42" if far else "#726458")
+    draw.polygon(pixels(x, y, DEER_BODY), fill="#68594a", outline="#918167")
     draw.polygon(pixels(x, y, ((3, 9), (5, 8), (10, 8), (12, 6), (15, 5),
                                (17, 7), (14, 7), (11, 10), (8, 11), (4, 11))),
-                 fill="#9e766f")
+                 fill="#958166")
     draw.line(pixels(x, y, ((4, 9), (6, 8), (10, 8), (12, 6))), fill=lit_fur)
-    draw.line(pixels(x, y, ((4, 12), (9, 12), (11, 11))), fill="#6e586d")
+    draw.line(pixels(x, y, ((4, 12), (9, 12), (11, 11))), fill="#776656")
     draw.line(pixels(x, y, ((13, 5), (15, 5), (17, 7))), fill=lit_fur)
     draw.line(pixels(x, y, ((13, 5), (12, 2), (10, 0), (10, -1))), fill="#a6b1c5")
     draw.line(pixels(x, y, ((12, 2), (13, 1), (13, -1))), fill="#a6b1c5")
     draw.line(pixels(x, y, ((13, 4), (15, 2), (16, 1))), fill="#607593")
     draw.point((x + 15, y + 6), fill="#cfb798")
-    draw.line(pixels(x, y, ((13, 7), (14, 8))), fill="#a68191")
+    draw.line(pixels(x, y, ((13, 7), (14, 8))), fill="#897564")
     if leader:
         nose_x, nose_y = x + 18, y + 7
         if glow:
