@@ -16,9 +16,10 @@ UPPER_BERRY_WRAP = ((58, 79), (60, 81), (64, 83), (68, 83), (71, 82), (73, 81))
 LOWER_BERRY_WRAP = ((77, 92), (74, 94), (69, 96), (64, 96), (58, 95), (55, 93), (53, 91))
 ADULT_WRAP_TIMES = (11.75, 13.30)
 OWLET_WRAP_TIMES = (13.90, 15.40)
-ADULT_PERCH = (110, 70)
+ADULT_PERCH = (110, 72)
 OWLET_PERCH = (123, 74)
-ADULT_LANDS_AT, OWLET_LANDS_AT = 17.00, 17.45
+ADULT_LANDS_AT, OWLET_LANDS_AT = 17.05, 17.50
+WINGBEAT_RATE = 16  # radians per second
 WOODLAND_ORNAMENTS = (
     (65, 57, 1), (67, 65, 0), (62, 71, 3), (74, 73, 2),
     (56, 80, 0), (67, 82, 1), (76, 84, 3), (55, 93, 2),
@@ -223,22 +224,22 @@ def along_path(points, progress):
 
 
 def draw_adult_owl(draw, x, y, seconds, flying):
-    # The original wide face, round eye disks and pointed tufts.
-    draw.ellipse((x - 6, y - 5, x + 5, y + 8), fill="#a9755b", outline="#70475a")
-    draw.ellipse((x - 3, y + 1, x + 3, y + 7), fill="#d6a478")
-    draw.polygon(((x - 7, y - 1), (x - 6, y - 8), (x - 3, y - 6),
-                  (x + 1, y - 6), (x + 4, y - 8), (x + 6, y - 1),
-                  (x + 4, y + 2), (x - 4, y + 2)), fill="#aa826e")
-    for eye in (x - 3, x + 2):
-        draw.ellipse((eye - 2, y - 5, eye + 2, y), fill="#f7f4e1")
+    # Keep the round eye disks and tufts in a smaller silhouette.
+    draw.ellipse((x - 5, y - 4, x + 4, y + 6), fill="#a9755b", outline="#70475a")
+    draw.ellipse((x - 2, y + 1, x + 2, y + 5), fill="#d6a478")
+    draw.polygon(((x - 5, y - 1), (x - 5, y - 7), (x - 2, y - 5),
+                  (x + 1, y - 5), (x + 4, y - 7), (x + 5, y - 1),
+                  (x + 3, y + 1), (x - 3, y + 1)), fill="#aa826e")
+    for eye in (x - 2, x + 2):
+        draw.ellipse((eye - 1, y - 4, eye + 1, y), fill="#f7f4e1")
         if seconds % 1.85 < 0.13:
             draw.line((eye - 1, y - 2, eye + 1, y - 2), fill="#514b42")
         else:
             draw.point((eye - int(flying), y - 3), fill="#33334a")
     draw.point((x, y), fill="#ffce88")
     if not flying:
-        draw.point((x - 2, y + 8), fill="#d4ab79")
-        draw.point((x + 2, y + 8), fill="#d4ab79")
+        draw.point((x - 2, y + 6), fill="#d4ab79")
+        draw.point((x + 2, y + 6), fill="#d4ab79")
 
 
 def draw_owlet(draw, x, y, seconds):
@@ -255,7 +256,7 @@ def draw_owlet(draw, x, y, seconds):
 
 
 def draw_wings(draw, x, y, width, flap):
-    root_depth = 4 if width == 7 else 6
+    root_depth = width - 3
     for side in (-1, 1):
         tip = (x + side * width, y + flap)
         draw.polygon(((x + side * 2, y + 2), tip, (tip[0] - side * 2, tip[1] + 3),
@@ -283,20 +284,21 @@ def owl_positions(seconds):
         adult = (x + 1, y - 5)
     else:
         adult = timed_path(seconds, (
-            (adult_finish, (74, 76)), (13.60, (85, 53)), (15.05, (91, 49)), (15.8, (96, 52)),
-            (16.45, (106, 59)), (ADULT_LANDS_AT, ADULT_PERCH),
+            (adult_finish, (74, 76)), (13.65, (83, 58)), (14.12, (88, 52)), (15.15, (92, 51)),
+            (15.9, (98, 53)), (16.48, (106, 61)), (ADULT_LANDS_AT, ADULT_PERCH),
         ))
     if seconds < chick_start:
         owlet = timed_path(seconds, (
-            (9.85, (93, 58)), (11.85, (96, 62)), (13.50, (99, 68)), (chick_start, (76, 87)),
+            (9.85, (93, 58)), (11.85, (96, 62)), (13.15, (101, 67)),
+            (13.48, (94, 76)), (chick_start, (76, 87)),
         ))
     elif seconds < chick_finish:
         x, y = along_path(LOWER_BERRY_WRAP, (seconds - chick_start) / (chick_finish - chick_start))
         owlet = (x - 1, y - 5)
     else:
         owlet = timed_path(seconds, (
-            (chick_finish, (52, 86)), (15.73, (47, 66)), (16.1, (66, 50)),
-            (16.43, (88, 43)), (16.82, (108, 46)), (17.1, (122, 59)),
+            (chick_finish, (52, 86)), (15.81, (48, 70)), (16.22, (65, 53)),
+            (16.60, (87, 46)), (16.96, (108, 49)), (17.20, (119, 61)),
             (OWLET_LANDS_AT, OWLET_PERCH),
         ))
     return adult, owlet
@@ -342,10 +344,10 @@ def draw_owl_garland(draw, seconds):
     adult, owlet = owl_positions(seconds)
     adult_flying = seconds < ADULT_LANDS_AT
     if adult_flying:
-        draw_wings(draw, *adult, 10, round(5 * sin(seconds * 32)))
+        draw_wings(draw, *adult, 8, round(4 * sin(seconds * WINGBEAT_RATE)))
     if seconds < OWLET_LANDS_AT - 0.27:
         # Fold the wing tips up on approach so they stay above the snowy perch.
-        flap = round(3 * sin(seconds * 32 + 1.5))
+        flap = round(3 * sin(seconds * WINGBEAT_RATE + 1.5))
         if owlet[0] >= 119:
             flap = min(flap, 0)
         draw_wings(draw, *owlet, 7, flap)
