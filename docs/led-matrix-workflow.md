@@ -79,6 +79,10 @@ Create artwork directly on a 128×128 canvas. Export numbered PNGs with
 zero-padded filenames, in playback order, to build a uniform-delay GIF.
 Use the source GIF directly when it is already available. The Christmas scene's
 reproducible builder and finished native GIF are under `artwork/christmas`.
+Its 18.8-second loop holds the farm for 7.75 seconds, follows Santa into the
+woods over 3.75 seconds, then holds the forest for about 6 seconds before the
+fade back. The camera crops the scenery layers at different speeds while
+keeping each exported frame at 128×128.
 
 ```sh
 python3 matrix_animation.py build /path/to/128px-frames seasonal.gif --duration-ms 100

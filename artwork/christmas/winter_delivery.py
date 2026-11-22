@@ -1,10 +1,9 @@
 """Animate the gift delivery and the snowman's reaction at native size."""
 from math import cos, pi, sin, sqrt
 
-from santa_flyby import SANTA_HAND, flight_pose
+from santa_flyby import DROP_AT, SANTA_HAND, flight_pose
 
 
-DROP_AT = 6.70
 FALL_SECONDS = 1.0
 LAND_AT = DROP_AT + FALL_SECONDS
 GIFT_X, GIFT_Y = 122, 118

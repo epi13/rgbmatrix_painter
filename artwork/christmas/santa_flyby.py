@@ -1,13 +1,17 @@
-"""Native pixel sprites for Santa's pass through the Christmas sky."""
-from math import pi, sin
+"""Native pixel sprites and the sleigh's path through both Christmas scenes."""
+from bisect import bisect_right
+from math import exp, pi, sin
 
 
 FLIGHT_START = 0.30
-FLIGHT_SECONDS = 8.25
+FARM_PASS_SECONDS = 8.25
+DROP_AT = 6.70
 SANTA_HAND = (20, 7)
-HO_START = 4.05
-HO_INTERVAL = 0.48
-HO_COUNT = 9
+FARM_HO_BEATS = tuple(4.05 + i * 0.48 for i in range(6))
+WOODLAND_HO_BEATS = tuple(7.04 + i * 0.74 for i in range(14))
+HO_COUNT = len(FARM_HO_BEATS) + len(WOODLAND_HO_BEATS)
+# Empty beats leave room for the final three letters to fade as the sleigh exits.
+HO_BEATS = FARM_HO_BEATS + WOODLAND_HO_BEATS + tuple(WOODLAND_HO_BEATS[-1] + i * 0.74 for i in (1, 2, 3))
 
 DEER_BODY = (
     (0, 7), (3, 8), (5, 7), (10, 7), (12, 4), (12, 3), (14, 5),
@@ -30,15 +34,28 @@ def pixels(x, y, points):
     return tuple((x + dx, y + dy) for dx, dy in points)
 
 
+def flight_position(seconds):
+    """Keep the original farm approach, then ease into a slower woodland cruise."""
+    farm_speed = 240 / FARM_PASS_SECONDS
+    if seconds <= DROP_AT:
+        return -97 + (seconds - FLIGHT_START) * farm_speed
+    elapsed = seconds - DROP_AT
+    launch_x = -97 + (DROP_AT - FLIGHT_START) * farm_speed
+    cruise_speed = 16
+    coast_time = 0.65
+    coast_distance = (farm_speed - cruise_speed) * coast_time * (1 - exp(-elapsed / coast_time))
+    return launch_x + cruise_speed * elapsed + coast_distance
+
+
 def flight_pose(seconds):
-    progress = (seconds - FLIGHT_START) / FLIGHT_SECONDS
-    return round(-97 + 240 * progress), 20 + round(4 * sin(2 * pi * progress))
+    progress = (seconds - FLIGHT_START) / FARM_PASS_SECONDS
+    return round(flight_position(seconds)), 20 + round(4 * sin(2 * pi * progress))
 
 
-def draw_reindeer(draw, x, y, stride, leader, glow):
-    moonlit = abs(x + 12 - 101) < 19
-    lit_fur = "#c3af97" if moonlit else "#ae987b"
-    # Separate the legs by depth, with darker, cooler far legs.
+def draw_reindeer(draw, x, y, stride, leader, glow, moon_x):
+    # Match the sack and sleigh's browns, whose color was checked on the panel.
+    lit_fur = "#dea878" if abs(x + 12 - moon_x) < 19 else "#d6a478"
+    # Separate the legs by depth, with darker far legs.
     for hip, poses in ((5, HIND_LEGS), (11, FRONT_LEGS)):
         for far in (True, False):
             knee, hoof = poses[(stride + 2 * far) % len(poses)]
@@ -47,21 +64,21 @@ def draw_reindeer(draw, x, y, stride, leader, glow):
             draw.line(
                 ((leg_x, y + 11), (leg_x + knee[0], y + 11 + knee[1]),
                  leg_tip),
-                fill="#685c51" if far else lit_fur,
+                fill="#805266" if far else "#aa826e",
             )
             draw.point(leg_tip, fill="#514b42" if far else "#726458")
-    draw.polygon(pixels(x, y, DEER_BODY), fill="#68594a", outline="#918167")
+    draw.polygon(pixels(x, y, DEER_BODY), fill="#70475a", outline="#aa826e")
     draw.polygon(pixels(x, y, ((3, 9), (5, 8), (10, 8), (12, 6), (15, 5),
                                (17, 7), (14, 7), (11, 10), (8, 11), (4, 11))),
-                 fill="#958166")
+                 fill="#a9755b")
     draw.line(pixels(x, y, ((4, 9), (6, 8), (10, 8), (12, 6))), fill=lit_fur)
-    draw.line(pixels(x, y, ((4, 12), (9, 12), (11, 11))), fill="#776656")
+    draw.line(pixels(x, y, ((4, 12), (9, 12), (11, 11))), fill="#87646e")
     draw.line(pixels(x, y, ((13, 5), (15, 5), (17, 7))), fill=lit_fur)
     draw.line(pixels(x, y, ((13, 5), (12, 2), (10, 0), (10, -1))), fill="#a6b1c5")
     draw.line(pixels(x, y, ((12, 2), (13, 1), (13, -1))), fill="#a6b1c5")
     draw.line(pixels(x, y, ((13, 4), (15, 2), (16, 1))), fill="#607593")
     draw.point((x + 15, y + 6), fill="#cfb798")
-    draw.line(pixels(x, y, ((13, 7), (14, 8))), fill="#897564")
+    draw.line(pixels(x, y, ((13, 7), (14, 8))), fill="#aa826e")
     if leader:
         nose_x, nose_y = x + 18, y + 7
         if glow:
@@ -130,12 +147,12 @@ def draw_sleigh(draw, x, y, flutter):
     draw.line(pixels(x, y, ((3, 16), (10, 16))), fill="#f1c595")
 
 
-def draw_trail(draw, seconds):
-    beat = (seconds - HO_START) / HO_INTERVAL
-    if not 0 <= beat < HO_COUNT + 2:
+def draw_trail(draw, seconds, camera_x):
+    newest = bisect_right(HO_BEATS, seconds) - 1
+    if newest < 0 or newest >= len(HO_BEATS) - 1:
         return
-    newest = int(beat)
-    progress = beat - newest
+    interval = HO_BEATS[newest + 1] - HO_BEATS[newest]
+    progress = (seconds - HO_BEATS[newest]) / interval
     # Only the newest three emissions are eligible to draw. The middle slot
     # stays brighter than either of its neighbours throughout the crossfade.
     for emission in range(max(0, newest - 2), min(newest + 1, HO_COUNT)):
@@ -146,8 +163,8 @@ def draw_trail(draw, seconds):
             tone = 5 if 0.18 <= progress < 0.78 else 4
         else:
             tone = round(3 * (1 - progress))
-        start_x, start_y = flight_pose(HO_START + emission * HO_INTERVAL)
-        x = start_x - 10
+        start_x, start_y = flight_pose(HO_BEATS[emission])
+        x = start_x - camera_x - 10
         y = start_y - 7 - round((slot + progress) * 2.6)
         for dy, row in enumerate(HO_PIXELS):
             for dx, pixel in enumerate(row):
@@ -159,11 +176,12 @@ def draw_trail(draw, seconds):
             draw.line((star_x, y - 1, star_x, y + 1), fill=HO_COLORS[5])
 
 
-def draw_flyby(draw, seconds):
-    draw_trail(draw, seconds)
-    if not FLIGHT_START <= seconds < FLIGHT_START + FLIGHT_SECONDS:
+def draw_flyby(draw, seconds, camera_x, moon_x):
+    draw_trail(draw, seconds, camera_x)
+    if seconds < FLIGHT_START:
         return
     x, y = flight_pose(seconds)
+    x -= camera_x
     stride = int((seconds - FLIGHT_START) * 11)
     herd = [(x + offset, y - rise + int((stride + index) % 4 == 1))
             for index, (offset, rise) in enumerate(((30, 1), (50, 3), (70, 5)))]
@@ -176,5 +194,6 @@ def draw_flyby(draw, seconds):
         start_x, start_y = end_x, end_y
     for index, (deer_x, deer_y) in enumerate(herd):
         leader = index == len(herd) - 1
-        draw_reindeer(draw, deer_x, deer_y, (stride + index) % 4, leader, glow=stride % 6 < 3)
+        draw_reindeer(draw, deer_x, deer_y, (stride + index) % 4, leader,
+                      glow=stride % 6 < 3, moon_x=moon_x)
     draw_sleigh(draw, x, y, (stride // 3) % 2)
