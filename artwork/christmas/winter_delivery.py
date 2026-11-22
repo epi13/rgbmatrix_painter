@@ -41,34 +41,40 @@ def draw_presents_under_tree(draw):
     draw_wrapped_present(draw, 111, 122, 5, 5, ("#568d9a", "#3d607f", "#85b7bc", "#d8e3a6"))
 
 
-def draw_gift(draw, seconds):
-    if seconds < DROP_AT:
+def draw_falling_present(draw, age, fall_seconds, launch, landing, colors):
+    if age < 0:
         return
-    progress = (seconds - DROP_AT) / FALL_SECONDS
+    progress = age / fall_seconds
     tilt = 0
-    fade = 0
     if progress < 1:
-        sleigh_x, sleigh_y = flight_pose(DROP_AT)
-        start_x, start_y = sleigh_x + SANTA_HAND[0], sleigh_y + SANTA_HAND[1] + 2
-        x = round(GIFT_X - (GIFT_X - start_x) * (1 - progress) ** 4)
-        y = round(start_y + (GIFT_Y - start_y) * (0.20 * progress + 0.80 * progress ** 2))
+        start_x, start_y = launch
+        end_x, end_y = landing
+        x = round(end_x - (end_x - start_x) * (1 - progress) ** 4)
+        y = round(start_y + (end_y - start_y) * (0.20 * progress + 0.80 * progress ** 2))
         tilt = (0, 1, 0, -1)[int(progress * 12) % 4]
     else:
-        landed = seconds - LAND_AT
+        landed = age - fall_seconds
         # A short bounce and a few displaced snow pixels mark contact.
         bounce = sin(pi * min(1, landed / 0.20)) * 2
-        x, y = GIFT_X, GIFT_Y - round(bounce)
+        x, y = landing
+        y -= round(bounce)
         if landed < 0.33:
             spread = round(landed * 10)
             draw.point((x - 4 - spread, y + 3 - spread), fill="#d9e4e5")
             draw.point((x + 4 + spread, y + 3 - spread), fill="#c4d3de")
             draw.point((x - 2 - spread, y + 4), fill="#afc1d6")
-        if seconds >= GIFT_FADE_START:
-            fade = 1 + int((seconds - GIFT_FADE_START) / GIFT_FADE_STEP)
-            if fade >= len(GIFT_COLORS):
-                return
+    draw_wrapped_present(draw, x - 3, y + 3, 5, 6, colors, tilt)
 
-    draw_wrapped_present(draw, x - 3, y + 3, 5, 6, GIFT_COLORS[fade], tilt)
+
+def draw_gift(draw, seconds):
+    if seconds < DROP_AT:
+        return
+    fade = 0 if seconds < GIFT_FADE_START else 1 + int((seconds - GIFT_FADE_START) / GIFT_FADE_STEP)
+    if fade >= len(GIFT_COLORS):
+        return
+    sleigh_x, sleigh_y = flight_pose(DROP_AT)
+    launch = (sleigh_x + SANTA_HAND[0], sleigh_y + SANTA_HAND[1] + 2)
+    draw_falling_present(draw, seconds - DROP_AT, FALL_SECONDS, launch, (GIFT_X, GIFT_Y), GIFT_COLORS[fade])
 
 
 def draw_snowball(draw, x, y, rx, ry):

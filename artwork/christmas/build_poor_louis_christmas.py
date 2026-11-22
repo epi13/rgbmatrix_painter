@@ -23,7 +23,7 @@ from winter_scenery import (
     draw_tree,
     draw_tree_lights,
 )
-from woodland_scene import draw_woodland_animals, draw_woodland_lights, draw_woodland_props
+from woodland_scene import draw_woodland_motion, draw_woodland_props
 
 
 SIZE = 128
@@ -170,7 +170,7 @@ def make_panorama():
     draw.line(((147, 122), (153, 121), (169, 123)), fill="#c4d3de")
     draw.line(((236, 124), (249, 122), (264, 123)), fill="#d1e3e8")
     woodland = Image.new("RGBA", (SIZE, SIZE))
-    draw_woodland_props(ImageDraw.Draw(woodland))
+    draw_woodland_props(woodland)
     ground.alpha_composite(woodland, (WOODLAND_X, 0))
     return sky, ridge, trees, ground
 
@@ -260,8 +260,7 @@ def draw_frame(panorama, seconds):
         woodland = Image.new("RGBA", (SIZE, SIZE))
         draw = ImageDraw.Draw(woodland)
         draw_snow_glints(draw, woodland_phase)
-        draw_woodland_lights(draw, woodland_phase)
-        draw_woodland_animals(draw, woodland_phase)
+        draw_woodland_motion(woodland, woodland_phase, seconds, WOODLAND_X)
         image.paste(woodland, (WOODLAND_X - camera_x, 0), woodland)
 
     draw = ImageDraw.Draw(image)
