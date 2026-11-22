@@ -8,6 +8,7 @@ from random import Random
 from PIL import Image, ImageChops, ImageDraw
 
 from santa_flyby import draw_flyby
+from winter_delivery import draw_delivery
 
 
 SIZE = 128
@@ -118,7 +119,7 @@ def scene():
     draw.polygon(((0, 106), (19, 101), (44, 103), (69, 98), (101, 103), (127, 98),
                   (127, 127), (0, 127)), fill="#6e8eb7")
     draw.polygon(((0, 115), (20, 112), (52, 116), (72, 111), (101, 116), (127, 113),
-                  (127, 127), (0, 127)), fill="#b1c9dc")
+                  (127, 127), (0, 127)), fill="#8ca5b8")
     draw.line(((0, 116), (20, 113), (38, 115)), fill="#d1e3e8")
     draw.line(((84, 121), (101, 118), (127, 116)), fill="#d1e3e8")
     draw.ellipse((8, 114, 62, 121), fill="#7d9bbe")
@@ -140,24 +141,13 @@ def scene():
     draw.point((33, 94), fill="#fb7668")
     draw.line((29, 118, 39, 118), fill="#e1e8df")
 
-    # Evergreen, small wrapped presents, and a round snowman.
+    # Evergreen, small wrapped presents, and the snowman's ground shadow.
     spruce(draw, 99, 77, 30, 40, ("#164d48", "#347961", "#79564e"), "#a1c6c1")
     draw.rectangle((104, 115, 110, 121), fill="#b05054")
     draw.line((107, 115, 107, 121), fill="#ffc98c")
     draw.rectangle((111, 117, 116, 121), fill="#426f89")
     draw.line((113, 117, 113, 121), fill="#d8e3a6")
-    draw.ellipse((66, 118, 82, 122), fill="#7d9bbe")
-    draw.ellipse((68, 109, 80, 120), fill="#e1e8df")
-    draw.arc((68, 109, 80, 120), 0, 145, fill="#a0b9cd", width=2)
-    draw.ellipse((70, 101, 78, 110), fill="#e1e8df")
-    draw.rectangle((71, 99, 77, 102), fill="#32304a")
-    draw.line((69, 103, 79, 103), fill="#32304a")
-    draw.point((72, 105), fill="#32304a")
-    draw.point((76, 105), fill="#32304a")
-    draw.line((74, 107, 76, 107), fill="#d68156")
-    draw.line((70, 110, 78, 110), fill="#b05054", width=2)
-    draw.point((74, 114), fill="#32304a")
-    draw.point((74, 117), fill="#32304a")
+    draw.ellipse((64, 119, 84, 124), fill="#7288a9")
     return image
 
 
@@ -171,6 +161,7 @@ def draw_frame(background, index):
     image = background.copy()
     draw = ImageDraw.Draw(image)
     phase = index / FRAME_COUNT
+    seconds = index * DELAY_MS / 1000
     # Preserve the original scenery's 80 ms light and smoke beats.
     tick = index * DELAY_MS // 80
 
@@ -210,8 +201,8 @@ def draw_frame(background, index):
         rise = (tick + offset * 10) % 30
         if rise < 24:
             draw.point((48 + rise // 6, 80 - rise // 4), fill="#8199b5" if rise < 12 else "#415471")
-    draw.line((77, 111, 81, 112, 83, 111 + (tick // 10) % 3), fill="#b05054")
-    draw_flyby(draw, index * DELAY_MS / 1000)
+    draw_flyby(draw, seconds)
+    draw_delivery(draw, seconds, phase)
     draw_title(image, phase)
     return image
 

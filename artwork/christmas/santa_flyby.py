@@ -2,9 +2,12 @@
 from math import pi, sin
 
 
-FLIGHT_START = 0.6
-FLIGHT_SECONDS = 7.6
-HO_STARTS = (3.60, 4.34, 5.08)
+FLIGHT_START = 0.30
+FLIGHT_SECONDS = 8.25
+SANTA_HAND = (20, 7)
+HO_START = 4.05
+HO_INTERVAL = 0.48
+HO_COUNT = 9
 
 DEER_BODY = (
     (0, 7), (3, 8), (5, 7), (10, 7), (12, 4), (12, 3), (14, 5),
@@ -20,7 +23,7 @@ HO_PIXELS = (
     "#.#.#.#",
     "#.#.###",
 )
-HO_COLORS = ("#fff2c4", "#ffdc9c", "#dba980", "#a3829b", "#636787", "#404863", "#262d48")
+HO_COLORS = ("#34364e", "#655773", "#a58099", "#ce9c96", "#ffcf94", "#fff5d2")
 
 
 def pixels(x, y, points):
@@ -29,11 +32,11 @@ def pixels(x, y, points):
 
 def flight_pose(seconds):
     progress = (seconds - FLIGHT_START) / FLIGHT_SECONDS
-    return round(-75 + 218 * progress), 20 + round(4 * sin(2 * pi * progress))
+    return round(-97 + 240 * progress), 20 + round(4 * sin(2 * pi * progress))
 
 
 def draw_reindeer(draw, x, y, stride, leader, glow):
-    fur, edge = "#222b43", "#8293b2"
+    fur, edge = "#31415f", "#8293b2"
     # The far legs use a cooler rim so the two pairs stay distinct in motion.
     for hip, poses in ((5, HIND_LEGS), (11, FRONT_LEGS)):
         for far in (True, False):
@@ -61,19 +64,26 @@ def draw_reindeer(draw, x, y, stride, leader, glow):
 
 
 def draw_sleigh(draw, x, y, flutter):
-    # A tied sack and the edge of one wrapped present rise behind Santa.
+    # The sack slumps over the back rail with two toys peeking out of its open cuff.
+    draw.rectangle((x - 2, y + 2, x + 2, y + 6), fill="#6cbea8", outline="#399782")
+    draw.line((x, y + 2, x, y + 6), fill="#f1dea2")
+    draw.rectangle((x + 4, y, x + 8, y + 6), fill="#cc6475", outline="#9b4f68")
+    draw.line((x + 6, y, x + 6, y + 6), fill="#ffd394")
     draw.polygon(
-        pixels(x, y, ((1, 9), (0, 6), (2, 3), (6, 2), (9, 4), (11, 8), (8, 11), (3, 11))),
-        fill="#604253", outline="#bb8c73",
+        pixels(x, y, ((-4, 4), (0, 5), (5, 4), (9, 3), (8, 7),
+                      (11, 9), (8, 11), (-1, 11), (-3, 9), (-2, 7))),
+        fill="#a9755b", outline="#dea878",
     )
-    draw.line(pixels(x, y, ((4, 3), (4, 1), (6, 1), (6, 3))), fill="#b98674")
-    draw.point((x + 5, y + 2), fill="#72ab99")
+    draw.line(pixels(x, y, ((-3, 5), (1, 6), (7, 5))), fill="#f1c595")
+    draw.line(pixels(x, y, ((1, 7), (2, 9), (6, 10))), fill="#70475a")
+    draw.line(pixels(x, y, ((5, 7), (5, 8), (8, 9))), fill="#805266")
 
     # Side profile, hat, beard, and the hand on the reins.
     draw.polygon(pixels(x, y, ((9, 10), (10, 5), (13, 4), (17, 6), (20, 8), (17, 10))),
                  fill="#80384f", outline="#b76272")
     draw.line(pixels(x, y, ((14, 6), (17, 7), (20, 7))), fill="#a6495d")
-    draw.point((x + 20, y + 7), fill="#d5b8a3")
+    hand_x, hand_y = SANTA_HAND
+    draw.point((x + hand_x, y + hand_y), fill="#d5b8a3")
     draw.rectangle((x + 13, y + 1, x + 16, y + 4), fill="#d29c87")
     draw.point((x + 17, y + 3), fill="#e4b79c")
     draw.line(pixels(x, y, ((16, 4), (17, 5), (15, 6), (14, 4))), fill="#d8d7e0")
@@ -94,24 +104,32 @@ def draw_sleigh(draw, x, y, flutter):
 
 
 def draw_trail(draw, seconds):
-    for start in HO_STARTS:
-        age = seconds - start
-        if not 0 <= age < 1.4:
-            continue
-        start_x, start_y = flight_pose(start)
-        x, y = start_x - 9, start_y - 7 - round(age * 6)
-        fade = min(len(HO_COLORS) - 1, int(age * 5))
-        ink = HO_COLORS[fade]
+    beat = (seconds - HO_START) / HO_INTERVAL
+    if not 0 <= beat < HO_COUNT + 2:
+        return
+    newest = int(beat)
+    progress = beat - newest
+    # Only the newest three emissions are eligible to draw. The middle slot
+    # stays brighter than either of its neighbours throughout the crossfade.
+    for emission in range(max(0, newest - 2), min(newest + 1, HO_COUNT)):
+        slot = newest - emission
+        if slot == 0:
+            tone = round(3 * progress)
+        elif slot == 1:
+            tone = 5 if 0.18 <= progress < 0.78 else 4
+        else:
+            tone = round(3 * (1 - progress))
+        start_x, start_y = flight_pose(HO_START + emission * HO_INTERVAL)
+        x = start_x - 10
+        y = start_y - 7 - round((slot + progress) * 2.6)
         for dy, row in enumerate(HO_PIXELS):
             for dx, pixel in enumerate(row):
                 if pixel == "#":
-                    draw.point((x + dx, y + dy), fill=ink)
-        if age < 0.55:
+                    draw.point((x + dx, y + dy), fill=HO_COLORS[tone])
+        if slot == 1 and 0.30 <= progress < 0.64:
             star_x = x + 9
-            draw.point((star_x, y), fill="#fff2c4")
-            if int(age * 12) % 3 == 1:
-                draw.line((star_x - 1, y, star_x + 1, y), fill="#dba980")
-                draw.line((star_x, y - 1, star_x, y + 1), fill="#fff2c4")
+            draw.line((star_x - 1, y, star_x + 1, y), fill=HO_COLORS[3])
+            draw.line((star_x, y - 1, star_x, y + 1), fill=HO_COLORS[5])
 
 
 def draw_flyby(draw, seconds):
@@ -120,13 +138,16 @@ def draw_flyby(draw, seconds):
         return
     x, y = flight_pose(seconds)
     stride = int((seconds - FLIGHT_START) * 11)
-    first_y = y - 2 + int(stride % 4 == 1)
-    lead_y = y - 4 + int(stride % 4 == 3)
-    # Trace both reins behind the sprites so the harnesses visually connect.
-    draw.line(((x + 20, y + 7), (x + 27, y + 9), (x + 45, first_y + 8)),
-              fill="#9c8497")
-    draw.line(((x + 45, first_y + 8), (x + 50, first_y + 10), (x + 66, lead_y + 8)),
-              fill="#9c8497")
-    draw_reindeer(draw, x + 32, first_y, stride % 4, leader=False, glow=False)
-    draw_reindeer(draw, x + 53, lead_y, (stride + 1) % 4, leader=True, glow=stride % 6 < 3)
+    herd = [(x + offset, y - rise + int((stride + index) % 4 == 1))
+            for index, (offset, rise) in enumerate(((30, 1), (50, 3), (70, 5)))]
+    # Paint the reins first, with a dip between each pair of harness points.
+    start_x, start_y = x + SANTA_HAND[0], y + SANTA_HAND[1]
+    for deer_x, deer_y in herd:
+        end_x, end_y = deer_x + 13, deer_y + 8
+        sag = ((start_x + end_x) // 2, (start_y + end_y) // 2 + 2)
+        draw.line(((start_x, start_y), sag, (end_x, end_y)), fill="#a58a9c")
+        start_x, start_y = end_x, end_y
+    for index, (deer_x, deer_y) in enumerate(herd):
+        leader = index == len(herd) - 1
+        draw_reindeer(draw, deer_x, deer_y, (stride + index) % 4, leader, glow=stride % 6 < 3)
     draw_sleigh(draw, x, y, (stride // 3) % 2)
