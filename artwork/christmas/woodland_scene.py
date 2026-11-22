@@ -12,9 +12,13 @@ TREE_X = 66
 TREE_SPRITE = ((43, 43, 90, 111), (45, 53), (41, 58))
 WOODLAND_DROP_AT = 11.80
 WOODLAND_GIFT_COLORS = ("#568d9a", "#3d607f", "#85b7bc", "#ffedad")
-BERRY_STRAND = ((78, 83), (73, 86), (68, 87), (62, 87), (57, 86), (54, 84))
-OWL_PERCH = ((116, 70), (123, 76))
-GARLAND_START, GARLAND_END = 14.45, 15.75
+UPPER_BERRY_WRAP = ((58, 79), (60, 81), (64, 83), (68, 83), (71, 82), (73, 81))
+LOWER_BERRY_WRAP = ((77, 92), (74, 94), (69, 96), (64, 96), (58, 95), (55, 93), (53, 91))
+ADULT_WRAP_TIMES = (11.75, 13.30)
+OWLET_WRAP_TIMES = (13.90, 15.40)
+ADULT_PERCH = (110, 70)
+OWLET_PERCH = (123, 74)
+ADULT_LANDS_AT, OWLET_LANDS_AT = 17.00, 17.45
 WOODLAND_ORNAMENTS = (
     (65, 57, 1), (67, 65, 0), (62, 71, 3), (74, 73, 2),
     (56, 80, 0), (67, 82, 1), (76, 84, 3), (55, 93, 2),
@@ -56,14 +60,10 @@ def draw_woodland_tree(draw):
         draw.line(((TREE_X + 5, hem - 10), (right - 6, hem - 7), (right - 3, hem - 5)),
                   fill="#89b89b")
 
-    for garland in (
-        ((61, 65), (67, 67), (73, 65)),
-        ((55, 77), (62, 80), (70, 81), (79, 79)),
-        ((49, 90), (56, 93), (64, 94), (73, 93), (82, 90)),
-        ((46, 100), (57, 103), (68, 104), (79, 103), (85, 101)),
-    ):
-        draw.line(tuple((x, y + 1) for x, y in garland), fill="#795f57")
-        draw.line(garland, fill="#c6a271")
+    # Leave the upper tiers open for the berry garlands the owls install.
+    base_garland = ((46, 100), (57, 103), (68, 104), (79, 103), (85, 101))
+    draw.line(tuple((x, y + 1) for x, y in base_garland), fill="#795f57")
+    draw.line(base_garland, fill="#c6a271")
 
 
 def draw_woodland_props(image):
@@ -255,44 +255,104 @@ def draw_owlet(draw, x, y, seconds):
 
 
 def draw_wings(draw, x, y, width, flap):
+    root_depth = 4 if width == 7 else 6
     for side in (-1, 1):
         tip = (x + side * width, y + flap)
         draw.polygon(((x + side * 2, y + 2), tip, (tip[0] - side * 2, tip[1] + 3),
-                      (x + side * 3, y + 6)), fill="#a9755b", outline="#aa826e")
+                      (x + side * 3, y + root_depth)), fill="#a9755b", outline="#aa826e")
+
+
+def timed_path(seconds, waypoints):
+    if seconds <= waypoints[0][0]:
+        return waypoints[0][1]
+    for (start, origin), (end, target) in zip(waypoints, waypoints[1:]):
+        if seconds <= end:
+            return along_path((origin, target), (seconds - start) / (end - start))
+    return waypoints[-1][1]
+
+
+def owl_positions(seconds):
+    adult_start, adult_finish = ADULT_WRAP_TIMES
+    chick_start, chick_finish = OWLET_WRAP_TIMES
+    if seconds < adult_start:
+        adult = timed_path(seconds, (
+            (10.3, (44, 55)), (10.9, (46, 58)), (11.35, (51, 65)), (adult_start, (59, 74)),
+        ))
+    elif seconds < adult_finish:
+        x, y = along_path(UPPER_BERRY_WRAP, (seconds - adult_start) / (adult_finish - adult_start))
+        adult = (x + 1, y - 5)
+    else:
+        adult = timed_path(seconds, (
+            (adult_finish, (74, 76)), (13.60, (85, 53)), (15.05, (91, 49)), (15.8, (96, 52)),
+            (16.45, (106, 59)), (ADULT_LANDS_AT, ADULT_PERCH),
+        ))
+    if seconds < chick_start:
+        owlet = timed_path(seconds, (
+            (9.85, (93, 58)), (11.85, (96, 62)), (13.50, (99, 68)), (chick_start, (76, 87)),
+        ))
+    elif seconds < chick_finish:
+        x, y = along_path(LOWER_BERRY_WRAP, (seconds - chick_start) / (chick_finish - chick_start))
+        owlet = (x - 1, y - 5)
+    else:
+        owlet = timed_path(seconds, (
+            (chick_finish, (52, 86)), (15.73, (47, 66)), (16.1, (66, 50)),
+            (16.43, (88, 43)), (16.82, (108, 46)), (17.1, (122, 59)),
+            (OWLET_LANDS_AT, OWLET_PERCH),
+        ))
+    return adult, owlet
+
+
+def draw_berry(draw, x, y, highlight):
+    draw.line((x - 1, y, x + 1, y), fill="#e47783")
+    draw.point((x, y + 1), fill="#b76272")
+    if highlight:
+        draw.point((x, y - 1), fill="#ffd2ae")
+
+
+def lay_garland(draw, seconds, bird, route, times, carry_side):
+    start, finish = times
+    progress = (seconds - start) / (finish - start)
+    if progress < 0:
+        # Each bird carries a short coil of berries of its own.
+        x, y = bird
+        coil = ((x, y), (x + carry_side, y + 3), (x + 4 * carry_side, y + 5))
+        draw.line(coil, fill="#ffc681")
+        draw_berry(draw, *coil[-1], True)
+        return
+
+    end = along_path(route, progress)
+    placed = min(len(route) - 1, int(progress * (len(route) - 1)))
+    strand = (*route[:placed + 1], end)
+    draw.line(tuple((x, y + 1) for x, y in strand), fill="#70475a")
+    draw.line(strand, fill="#ffc681")
+    for index, (x, y) in enumerate(route[:placed + 1]):
+        draw_berry(draw, x, y + 1, index % 2 == 0)
+
+    if progress < 1:
+        # A short loose end follows the bird's beak while the rest stays on the tree.
+        draw.line((end, bird), fill="#ffc681")
+        draw.point((end[0], end[1] + 1), fill="#ffd2ae")
+    elif seconds - finish < 0.24:
+        x, y = route[-1]
+        draw.line((x - 1, y - 2, x + 1, y - 2), fill="#ffd2ae")
+        draw.point((x, y - 2), fill="#fff6dc")
 
 
 def draw_owl_garland(draw, seconds):
-    adult, chick = OWL_PERCH
-    flying = 13.8 <= seconds < 17.0
-    progress = (seconds - GARLAND_START) / (GARLAND_END - GARLAND_START)
-    end = along_path(BERRY_STRAND, progress)
-    if flying and seconds < GARLAND_START:
-        flight = (seconds - 13.8) / (GARLAND_START - 13.8)
-        adult = along_path((adult, (98, 63), BERRY_STRAND[0]), flight)
-        chick = along_path((chick, (105, 69), (86, 79)), flight)
-        draw.line((adult, chick), fill="#d8e3a6")
-        draw.point(along_path((adult, chick), 0.45), fill="#e47783")
-    elif flying and seconds < GARLAND_END:
-        adult = end
-        chick = (end[0] + 8, end[1] - 4)
-    elif flying:
-        flight = (seconds - GARLAND_END) / (17.0 - GARLAND_END)
-        adult = along_path((BERRY_STRAND[-1], (64, 62), (89, 59), adult), flight)
-        chick = along_path(((62, 80), (73, 57), (98, 62), chick), flight)
-    if progress >= 0:
-        # The berry strand stays behind on the branches as the birds return.
-        placed = min(len(BERRY_STRAND) - 1, int(progress * (len(BERRY_STRAND) - 1)))
-        strand = (*BERRY_STRAND[:placed + 1], end)
-        draw.line(strand, fill="#d8e3a6")
-        for index, (x, y) in enumerate(strand[:-1]):
-            draw.point((x, y + 1), fill="#e47783")
-            if index % 2:
-                draw.point((x + 1, y + 1), fill="#b76272")
-    if flying:
+    adult, owlet = owl_positions(seconds)
+    adult_flying = seconds < ADULT_LANDS_AT
+    if adult_flying:
         draw_wings(draw, *adult, 10, round(5 * sin(seconds * 32)))
-        draw_wings(draw, *chick, 7, round(3 * sin(seconds * 32 + 1.5)))
-    draw_adult_owl(draw, *adult, seconds, flying)
-    draw_owlet(draw, *chick, seconds)
+    if seconds < OWLET_LANDS_AT - 0.27:
+        # Fold the wing tips up on approach so they stay above the snowy perch.
+        flap = round(3 * sin(seconds * 32 + 1.5))
+        if owlet[0] >= 119:
+            flap = min(flap, 0)
+        draw_wings(draw, *owlet, 7, flap)
+    lay_garland(draw, seconds, adult, UPPER_BERRY_WRAP, ADULT_WRAP_TIMES, -1)
+    lay_garland(draw, seconds, owlet, LOWER_BERRY_WRAP, OWLET_WRAP_TIMES, 1)
+    draw_adult_owl(draw, *adult, seconds, adult_flying)
+    draw_owlet(draw, *owlet, seconds)
 
 
 def draw_hung_ornament(draw, x, y, color):
